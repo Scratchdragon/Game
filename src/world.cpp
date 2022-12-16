@@ -58,7 +58,7 @@ class world_map {
     void generate_cave(IntVec2 pos, float size, int len) {
         float direction = (float(rand())/float(RAND_MAX))*(PI*2);
         float sv = 0;
-        Vector2 loc = {pos.x, pos.y};
+        Vector2 loc = {(float)pos.x, (float)pos.y};
         for(int i = 0; i < len; ++i) {
             loc.x+=sin(direction)*(size/3);
             loc.y+=cos(direction)*(size/3);
