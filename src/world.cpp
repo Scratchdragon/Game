@@ -60,10 +60,10 @@ class world_map {
         float sv = 0;
         Vector2 loc = {pos.x, pos.y};
         for(int i = 0; i < len; ++i) {
-            loc.x+=sin(direction)*(size/2);
-            loc.y+=cos(direction)*(size/2);
+            loc.x+=sin(direction)*(size/3);
+            loc.y+=cos(direction)*(size/3);
             direction += (float(rand())/float(RAND_MAX) - 0.5f)*(PI/2);
-            sv+=(float(rand())/float(RAND_MAX) - 0.5)*5;
+            sv+=(float(rand())/float(RAND_MAX) - 0.5);
             size+=sv;
             if(size > MAX_CAVE_SIZE || size < MIN_CAVE_SIZE) {
                 size-=sv;
@@ -125,9 +125,6 @@ class world_map {
             });
         }
 
-        if(!tiles::is_air(c->second[pos.x%16][pos.y%16]) && (pos.x%16 == 0 || pos.y%16 == 0))
-            return tiles::ID::SILT;
-
         return c->second[pos.x%16][pos.y%16];
     }
 
@@ -174,11 +171,11 @@ class world_map {
                         ++i;
                     }
                     if(!tiles::is_air(get_tile({tilex + x, tiley + y + 1}))) {
-                        wall[i] = 270;
+                        wall[i] = 90;
                         ++i;
                     }
                     if(!tiles::is_air(get_tile({tilex + x, tiley + y - 1}))) {
-                        wall[i] = 90;
+                        wall[i] = 270;
                         ++i;
                     }
                 }

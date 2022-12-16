@@ -33,6 +33,8 @@ namespace tiles {
     Texture2D sprites[TILE_COUNT];
     Texture2D shade;
 
+    RenderTexture2D shading_buffer;
+
     void load() {
         string image_path = "resources/images/tiles/";
         sprites[ID::GROUND] = LoadTexture( (image_path + "ground.png").c_str() );
@@ -43,12 +45,14 @@ namespace tiles {
         sprites[ID::TITANIUM] = LoadTexture( (image_path + "titanium.png").c_str() );
         sprites[ID::INSULATION] = LoadTexture( (image_path + "insulation.png").c_str() );
         shade = LoadTexture( (image_path + "shade.png").c_str() );
+        //shade = LoadTextureFromImage(GenImageGradientH(16, 16, (Color){0,0,0,0}, (Color){0, 0, 0, 200}));
+
+        shading_buffer = LoadRenderTexture(GetRenderWidth(), GetRenderHeight());
     }
 
     void unload() {
-        for(int i = 0; i < TILE_COUNT;++i) {
+        for(int i = 0; i < TILE_COUNT;++i)
             UnloadTexture(sprites[i]);
-        }
     }
 
     bool is_air(unsigned short id) {
@@ -66,20 +70,22 @@ namespace tiles {
         , tint);
 
         if(is_air(tile) && next_to) {
+            BeginTextureMode(shading_buffer);
             for(int i = 0;i<next_to;++i)
                 DrawTexturePro(
                     shade,
                     {0, 0, (float)shade.width, (float)shade.height},
                     {
-                        GetRenderWidth()/2.0f + pos.x + 8*(scale+0.01f), 
-                        GetRenderHeight()/2.0f - pos.y + 8*(scale+0.01f),
-                        16*(scale+0.01f),
-                        16*(scale+0.01f)
+                        GetRenderWidth()/2.0f + pos.x+ 8*scale, 
+                        GetRenderHeight()/2.0f + pos.y - 8*scale,
+                        16*scale,
+                        16*scale
                     },
-                    { 8*(scale+0.01f), 8*(scale+0.01f) },
+                    { 8*scale, 8*scale },
                     wall[i],
-                    tint
+                    (Color){255, 255, 255, 150}
                 );
+            EndTextureMode();
         }
     }
 }

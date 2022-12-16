@@ -64,8 +64,6 @@ void handle_input(_player * Player, float tile_w) {
 }
 
 int main() {
-    Random::init(time(0)); // Start the random engine
-
     // Init window
     Vector2 base_size = {800, 500};
     Vector2 window_size = base_size;
@@ -81,7 +79,7 @@ int main() {
     // The tiles are 50 wide
     Player.position = { WORLD_SIZE * 25, WORLD_SIZE * 25 }; // Middle of the map
     world_map World = world_map();
-    World.generate_cave({WORLD_SIZE/2, WORLD_SIZE/2}, 5, 5);
+    World.generate_cave({WORLD_SIZE/2, WORLD_SIZE/2}, 7, 7);
     World.generate();
 
     // Load tile textures
@@ -100,8 +98,17 @@ int main() {
     // Main game loop
     while (!WindowShouldClose()) {
         // Update window variables
-        window_size = {(float)GetRenderWidth(), (float)GetRenderHeight()};
+        if(window_size.x != GetRenderWidth() || window_size.y != GetRenderHeight()) {
+            window_size = {(float)GetRenderWidth(), (float)GetRenderHeight()};
+            tiles::shading_buffer = LoadRenderTexture(window_size.x, window_size.y);
+        }
+        
         tile_w = tiles::sprites[1].width * tile_scale;
+
+        // Update the wall shading render texture
+        BeginTextureMode(tiles::shading_buffer);
+        ClearBackground((Color){0, 0, 0, 0});
+        EndTextureMode();
 
         render_start = clock();
         BeginDrawing();
@@ -115,7 +122,10 @@ int main() {
 
             Player.render();
 
-            DrawText( to_string((int)fps).c_str(), 4, 4, 20, RAYWHITE );
+            // Draw the wall shadows over the player to keep depth
+            DrawTexture(tiles::shading_buffer.texture, 0, 0, WHITE);
+
+            DrawText( to_string((int)fps).c_str(), 4, 4, 20, RAYWHITE);
 
         EndDrawing();
         
