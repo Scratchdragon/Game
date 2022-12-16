@@ -5,7 +5,7 @@
 #include <iostream>
 using namespace std;
 
-#define PLAYER_SPEED 2.0f
+#define PLAYER_SPEED 4.0f
 
 class _player {
     // Non public variables

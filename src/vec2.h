@@ -5,11 +5,6 @@
 // Vector2 with integer values
 struct IntVec2 {
     int x, y;
-    bool operator <( const IntVec2 &rhs ) const {
-        // Calculate unique ID
-        return ( (2^x)+y < (2^rhs.x)+rhs.y );
-    }
-
     IntVec2 operator+( const IntVec2 &rhs ) const {
         return (IntVec2){ x+rhs.x, y+rhs.y };
     }
@@ -56,11 +51,6 @@ struct LongVec2 {
 // Vector2 with long long values
 struct LongLongVec2 {
     long long x,y;
-    bool operator <( const LongLongVec2 &rhs ) const {
-        // Calculate unique ID
-        return ( (2^x)+y < (2^rhs.x)+rhs.y );
-    }
-
     LongLongVec2 operator+( const LongLongVec2 &rhs ) const {
         return (LongLongVec2){ x+rhs.x, y+rhs.y };
     }
@@ -78,12 +68,36 @@ struct LongLongVec2 {
 // Vector2 with short values
 struct ShortVec2 {
     short x,y;
+
+    int id() const {
+        unsigned short x2 = abs(x);
+        unsigned short y2 = abs(y);
+        if (x2<y2) {
+            return x2 * (y2-1) + trunc(pow(y2 - x2 - 2, 2) / 4);
+        }
+        else {
+            return (x2 - 1) * y2 + trunc(pow(y2 - x2 - 2, 2) / 4);
+        }
+    } 
+
     bool operator <( const ShortVec2 &rhs ) const {
-        // Calculate unique ID
-        return ( (2^x)+y < (2^rhs.x)+rhs.y );
+        return id() < rhs.id();
     }
 };
 
-float dist(Vector2 a, Vector2 b) {
-    return sqrt( pow(a.x - b.x, 2) + pow(a.y - b.y, 2) );
+// Vector2 with unsigned short values
+struct UShortVec2 {
+    unsigned short x,y;
+
+    int id() const {
+        return int(x) + (int(y)*255);
+    }
+
+    bool operator <( const UShortVec2 &rhs ) const {
+        return id() < rhs.id();
+    }
+};
+
+float dist(auto a, auto b) {
+    return sqrt( pow((float)a.x - (float)b.x, 2) + pow((float)a.y - (float)b.y, 2) );
 }
