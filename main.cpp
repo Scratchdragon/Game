@@ -64,7 +64,7 @@ void handle_input(_player * Player, float tile_w) {
 }
 
 int main() {
-    Random::init(time(0));
+    Random::init(time(0)); // Start the random engine
 
     // Init window
     Vector2 base_size = {800, 500};
