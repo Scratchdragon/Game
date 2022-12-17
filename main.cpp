@@ -93,15 +93,6 @@ int main() {
     // Init player
     _player Player = _player(&window_size);
     Player.position = { WORLD_SIZE * 25, WORLD_SIZE * 25 }; // Middle of the map
-    
-    // Setup the shader
-    Shader shader = LoadShader(TextFormat("src/shaders/glsl%i-base.vs", GLSL_VERSION), TextFormat("src/shaders/glsl%i-lighting.fs", GLSL_VERSION));
-    int shader_rotation_loc = GetShaderLocation(shader, "rotation");
-    int shader_center_loc = GetShaderLocation(shader, "center");
-    int shader_scale_loc = GetShaderLocation(shader, "scale");
-    SetShaderValue(shader, shader_rotation_loc, &Player.rotation, SHADER_UNIFORM_FLOAT);
-    SetShaderValue(shader, shader_rotation_loc, center_shader_val, SHADER_UNIFORM_VEC2);
-    SetShaderValue(shader, shader_scale_loc, &tile_scale, SHADER_UNIFORM_FLOAT);
 
     // Init map
     World = world_map();
@@ -145,10 +136,8 @@ int main() {
             ClearBackground(BLACK);
 
             wr_start = clock();
-    
-            BeginShaderMode(shader);
+
             World.render(&Player, tile_w, tile_scale);
-            EndShaderMode();
 
             wr_end = clock();
 
@@ -174,11 +163,6 @@ int main() {
 
         // Handle the user input
         handle_input(&Player, tile_w, {window_size.x/2, window_size.y/2});
-
-        // Update the shader
-        SetShaderValue(shader, shader_rotation_loc, &Player.rotation, SHADER_UNIFORM_FLOAT);
-        SetShaderValue(shader, shader_center_loc, center_shader_val, SHADER_UNIFORM_VEC2);
-        SetShaderValue(shader, shader_scale_loc, &tile_scale, SHADER_UNIFORM_FLOAT);
     }
 
     // Unload everything
