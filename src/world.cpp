@@ -270,19 +270,23 @@ class world_map {
         short *wall;
         short i = 0;
 
-        Color tint = WHITE;
+        float r, distance, brightness;
 
         for(int y = (-tileh/2) - r_padding.z; y < (tileh/2) + r_padding.w; ++y) {
             for(int x = (-tilew/2) - r_padding.x; x < (tilew/2) + r_padding.y; ++x) {
-                tint = WHITE;
-                float r = PI - atan2(x, y);
-                for(float d = 0; d < dist((Vector2){0, 0.75}, (Vector2){x, y}); d+=0.45) {
-                    if( !tiles::is_air(get_tile({ (int)(tilex + sin(r)*d + 0.5), (int)(tiley - cos(r)*d + 1) })) ) {
-                        tint.r-=DARKNESS;
-                        tint.g-=DARKNESS;
-                        tint.b-=DARKNESS;
-                        if(tint.r <= 255 - (DARKNESS*2))
-                            break;
+                brightness = 255;
+                r = PI - atan2(x, y);
+                distance = dist((Vector2){0, 0.75}, (Vector2){x, y});
+
+                if (distance > 15) 
+                    brightness = 255 - (DARKNESS*2);
+                else {
+                    for(float d = 0; d < distance; d+=0.45) {
+                        if( !tiles::is_air(get_tile({ (int)(tilex + sin(r)*d + 0.5), (int)(tiley - cos(r)*d + 1) })) ) {
+                            brightness-=DARKNESS;
+                            if(brightness <= 255 - (DARKNESS*2))
+                                break;
+                        }
                     }
                 }
 
@@ -307,14 +311,14 @@ class world_map {
                         ++i;
                     }
                 }
-                else if(tint.r > 255 - (DARKNESS*2))
-                    tint = (Color){265 - (DARKNESS*2), 265 - (DARKNESS*2), 265 - (DARKNESS*2), 255};
+                else if(brightness > 255 - (DARKNESS*2))
+                    brightness = 265 - (DARKNESS*2);
 
                 tiles::draw_tile( 
                     tile,
                     {(x * size) - (modx * size), (y * size) - (mody * size)},
                     scale,
-                    tint,
+                    (Color){brightness, brightness, brightness, 255},
                     wall,
                     i,
                     GetMousePosition().x - GetRenderWidth()/2 > (x * size) - (modx * size) && GetMousePosition().x - GetRenderWidth()/2 < ((x+1) * size) - (modx * size) &&
