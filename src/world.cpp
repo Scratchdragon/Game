@@ -27,6 +27,7 @@
 #define DEPOSITS 500
 
 #define DARKNESS 20
+#define LIMIT_LIGHTING false
 
 #define WORLD_SIZE 500 // Max of 4000
 
@@ -270,16 +271,22 @@ class world_map {
         short *wall;
         short i = 0;
 
-        float r, distance, brightness;
+        float r, distance;
+        unsigned char brightness;
 
         for(int y = (-tileh/2) - r_padding.z; y < (tileh/2) + r_padding.w; ++y) {
             for(int x = (-tilew/2) - r_padding.x; x < (tilew/2) + r_padding.y; ++x) {
                 brightness = 255;
                 r = PI - atan2(x, y);
-                distance = dist((Vector2){0, 0.75}, (Vector2){x, y});
+                distance = dist((Vector2){0, 0.75}, (Vector2){float(x), float(y)});
 
-                if (distance > 15) 
+                tile = get_tile({ (tilex + x), (tiley + y) });
+
+                if (LIMIT_LIGHTING && distance > 15) {
                     brightness = 255 - (DARKNESS*2);
+                    if(tiles::is_air(tile) && brightness > 255 - (DARKNESS*2) && round(distance) == 15) 
+                        brightness = 255 - DARKNESS;
+                }
                 else {
                     for(float d = 0; d < distance; d+=0.45) {
                         if( !tiles::is_air(get_tile({ (int)(tilex + sin(r)*d + 0.5), (int)(tiley - cos(r)*d + 1) })) ) {
@@ -290,7 +297,6 @@ class world_map {
                     }
                 }
 
-                tile = get_tile({ (tilex + x), (tiley + y) });
                 i=0;
                 if(tiles::is_air(tile)) {
                     wall = new short[4];
