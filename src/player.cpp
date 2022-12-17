@@ -2,6 +2,8 @@
 
 #include <raylib.h>
 
+#include <math.h>
+
 #include <iostream>
 using namespace std;
 
@@ -17,10 +19,10 @@ class _player {
     bool collision = false;
     
     Vector2 position = {0, 0};
+    float rotation = 0;
 
     // Rendering variables
     Texture2D sprite;
-    float offset = 0.0f;
     Vector2 size = {36, 70};
     
 
@@ -33,8 +35,8 @@ class _player {
         DrawTexturePro(
             sprite, 
             {0, 0, (float)sprite.width, (float)sprite.height}, // The original transform of the sprite
-            { (window_size->x + size.x) / 2.0f, (window_size->y + size.y - offset*2) / 2.0f, size.x, size.y + offset}, // The new transform of the sprite
-            size, 0, WHITE);
+            { window_size->x / 2.0f, window_size->y / 2.0f, size.x, size.y}, // The new transform of the sprite
+            {size.x/2, size.y/2}, rotation, WHITE);
     }
 
     void unload() {

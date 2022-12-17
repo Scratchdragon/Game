@@ -31,7 +31,7 @@ namespace tiles {
     } typedef ID;
 
     Texture2D sprites[TILE_COUNT];
-    Texture2D shade;
+    Texture2D shade, select;
 
     RenderTexture2D shading_buffer;
 
@@ -45,7 +45,7 @@ namespace tiles {
         sprites[ID::TITANIUM] = LoadTexture( (image_path + "titanium.png").c_str() );
         sprites[ID::INSULATION] = LoadTexture( (image_path + "insulation.png").c_str() );
         shade = LoadTexture( (image_path + "shade.png").c_str() );
-        //shade = LoadTextureFromImage(GenImageGradientH(16, 16, (Color){0,0,0,0}, (Color){0, 0, 0, 200}));
+        select = LoadTexture( (image_path + "select.png").c_str() );
 
         shading_buffer = LoadRenderTexture(GetRenderWidth(), GetRenderHeight());
     }
@@ -59,15 +59,25 @@ namespace tiles {
         return id == ID::GROUND || id == ID::CHARRED_GROUND;
     }
 
-    void draw_tile(int tile, Vector2 pos, float scale, Color tint, short *wall, short next_to) {
+    void draw_tile(int tile, Vector2 pos, float scale, Color tint, short *wall, short next_to, bool selected) {
         if(tile == ID::VOID)
             return;
+
+        if(selected)
+            tint = WHITE;
         
         DrawTextureEx(sprites[tile], {
             GetRenderWidth()/2.0f + pos.x, 
             GetRenderHeight()/2.0f - pos.y
         }, 0, scale+0.01f // A bit larger to avoid any gaps
         , tint);
+
+        if(selected)
+            DrawTextureEx(select, {
+                GetRenderWidth()/2.0f + pos.x, 
+                GetRenderHeight()/2.0f - pos.y
+            }, 0, scale*2+0.01f // A bit larger to avoid any gaps
+            , tint);
 
         if(is_air(tile) && next_to) {
             BeginTextureMode(shading_buffer);

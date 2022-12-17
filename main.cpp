@@ -5,13 +5,19 @@
 #include <raylib.h>
 
 // Local headers
-#include "src/player.cpp"
 #include "src/tiles.cpp"
 #include "src/world.cpp"
+#include "src/player.cpp"
 
 #include "src/random.h"
 
 using namespace std;
+
+#if defined(PLATFORM_DESKTOP)
+    #define GLSL_VERSION            330
+#else   // PLATFORM_RPI, PLATFORM_ANDROID, PLATFORM_WEB
+    #define GLSL_VERSION            100
+#endif
 
 bool debug = true;
 
@@ -20,30 +26,42 @@ float mouse_wheel_v = 0;
 
 Vector2 movement_v = {0, 0};
 
-void handle_input(_player * Player, float tile_w) {
+world_map World;
+
+bool check_collision(_player * Player) {
+    Player->collision = 
+    !tiles::is_air(World.get_tile({(int)(Player->position.x/50 + 0.4), (int)(Player->position.y/50 + 1.4)})) ||
+    !tiles::is_air(World.get_tile({(int)(Player->position.x/50 - 0.4), (int)(Player->position.y/50 + 0.6)})) ||
+    !tiles::is_air(World.get_tile({(int)(Player->position.x/50 - 0.4), (int)(Player->position.y/50 + 1.4)})) ||
+    !tiles::is_air(World.get_tile({(int)(Player->position.x/50 + 0.4), (int)(Player->position.y/50 + 0.6)}));
+    return Player->collision;
+}
+
+void handle_input(_player * Player, float tile_w, Vector2 center) {
     // Slow down
     movement_v.x /= 1.15;
     movement_v.y /= 1.15;
 
     // Basic movement keys
-    if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP))
-        movement_v.y = PLAYER_SPEED;
-    if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN))
-        movement_v.y = -PLAYER_SPEED;
-    if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT))
-        movement_v.x = -PLAYER_SPEED;
-    if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT))
-        movement_v.x = PLAYER_SPEED;
+    if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP) || IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) {
+        movement_v.x = sin(Player->rotation/(180/PI)) * PLAYER_SPEED;
+        movement_v.y = cos(Player->rotation/(180/PI)) * PLAYER_SPEED;
+        if(IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) {
+            movement_v.x = -movement_v.x;
+            movement_v.y = -movement_v.y;
+        }
+    }
+
+    Player->rotation = 180 - round((atan2(GetMousePosition().x - center.x, GetMousePosition().y - center.y) / 3.1415)*180);
         
     // Update the positions
     Player->position.x += movement_v.x * (60 / (1/GetFrameTime()));
-    Player->position.y += movement_v.y * (60 / (1/GetFrameTime()));
-
-    if(Player->collision) {
-        // Move back
+    if(check_collision(Player))
         Player->position.x -= movement_v.x * (60 / (1/GetFrameTime()));
+
+    Player->position.y += movement_v.y * (60 / (1/GetFrameTime()));
+    if(check_collision(Player))
         Player->position.y -= movement_v.y * (60 / (1/GetFrameTime()));
-    }
     
     // Mouse wheel
     mouse_wheel_v += GetMouseWheelMove()*tile_scale*4;
@@ -51,7 +69,6 @@ void handle_input(_player * Player, float tile_w) {
         mouse_wheel_v = 0; 
     if(mouse_wheel_v < 0 && tile_scale < 1 && !debug)
         mouse_wheel_v = 0;
-
 
     if(abs(mouse_wheel_v) <= 0.04) {
         if(mouse_wheel_v != 0)
@@ -64,23 +81,34 @@ void handle_input(_player * Player, float tile_w) {
 }
 
 int main() {
+    Structure start_zone = LoadStructure("resources/structures/start_zone.struct");
+
     // Init window
     Vector2 base_size = {800, 500};
     Vector2 window_size = base_size;
+    float center_shader_val[2] = {base_size.x/2, base_size.y/2};
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(window_size.x, window_size.y, "Game");
-
-    // Season dial
-    Texture2D dial_bg = LoadTexture("resources/images/ui/season-dial.png");
-    Texture2D dial_needle = LoadTexture("resources/images/ui/needle.png");
-
+    
     // Init player
     _player Player = _player(&window_size);
-    // The tiles are 50 wide
     Player.position = { WORLD_SIZE * 25, WORLD_SIZE * 25 }; // Middle of the map
-    world_map World = world_map();
-    World.generate_cave({WORLD_SIZE/2, WORLD_SIZE/2}, 7, 7);
+    
+    // Setup the shader
+    Shader shader = LoadShader(TextFormat("src/shaders/glsl%i-base.vs", GLSL_VERSION), TextFormat("src/shaders/glsl%i-lighting.fs", GLSL_VERSION));
+    int shader_rotation_loc = GetShaderLocation(shader, "rotation");
+    int shader_center_loc = GetShaderLocation(shader, "center");
+    int shader_scale_loc = GetShaderLocation(shader, "scale");
+    SetShaderValue(shader, shader_rotation_loc, &Player.rotation, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, shader_rotation_loc, center_shader_val, SHADER_UNIFORM_VEC2);
+    SetShaderValue(shader, shader_scale_loc, &tile_scale, SHADER_UNIFORM_FLOAT);
+
+    // Init map
+    World = world_map();
+    World.generate_cave({(WORLD_SIZE/2), (WORLD_SIZE/2) - 3}, 18, 50, tiles::ID::GROUND);
     World.generate();
+    World.generate_cave((IntVec2){(WORLD_SIZE/2) + 3, (WORLD_SIZE/2) - 3}, 3, 3, tiles::ID::SILT);
+    World.place_structure(start_zone, {(WORLD_SIZE/2)-(start_zone.width/2), WORLD_SIZE/2-(start_zone.height/2)});
 
     // Load tile textures
     tiles::load();
@@ -100,6 +128,8 @@ int main() {
         // Update window variables
         if(window_size.x != GetRenderWidth() || window_size.y != GetRenderHeight()) {
             window_size = {(float)GetRenderWidth(), (float)GetRenderHeight()};
+            center_shader_val[0] = window_size.x/2;
+            center_shader_val[1] = window_size.y/2;
             tiles::shading_buffer = LoadRenderTexture(window_size.x, window_size.y);
         }
         
@@ -116,7 +146,9 @@ int main() {
 
             wr_start = clock();
     
-            World.render(&Player, tile_w, tile_scale, WHITE);
+            BeginShaderMode(shader);
+            World.render(&Player, tile_w, tile_scale);
+            EndShaderMode();
 
             wr_end = clock();
 
@@ -141,7 +173,12 @@ int main() {
         Player.size = {16 * tile_scale, 16 * tile_scale};
 
         // Handle the user input
-        handle_input(&Player, tile_w);
+        handle_input(&Player, tile_w, {window_size.x/2, window_size.y/2});
+
+        // Update the shader
+        SetShaderValue(shader, shader_rotation_loc, &Player.rotation, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(shader, shader_center_loc, center_shader_val, SHADER_UNIFORM_VEC2);
+        SetShaderValue(shader, shader_scale_loc, &tile_scale, SHADER_UNIFORM_FLOAT);
     }
 
     // Unload everything
