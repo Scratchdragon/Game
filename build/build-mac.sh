@@ -1,0 +1,1 @@
+g++-12 main.cpp -o main -L/usr/local/lib -I/usr/local/include -lraylib -lpthread -ldl -std=c++20

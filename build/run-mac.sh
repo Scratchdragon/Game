@@ -1,0 +1,1 @@
+./build/build-mac.sh && ./main

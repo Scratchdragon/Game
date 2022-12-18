@@ -36,6 +36,11 @@
 using namespace std;
 
 
+struct wire {
+    IntVec2 point;
+    bool powered = false;
+};
+
 struct chunk {
     tiles::tile content[16][16];
     const tiles::tile * operator []( const short x ) const {
@@ -102,6 +107,9 @@ class world_map {
 
     bool log = false;
 
+    bool show_wires = false;
+
+    map<IntVec2, wire> wiremap;
     map<UShortVec2, chunk> chunkmap;
 
     void place_structure(Structure s, IntVec2 pos) {
@@ -428,6 +436,21 @@ class world_map {
                 }
                 else if(brightness > 255 - (DARKNESS*2))
                     brightness = 265 - (DARKNESS*2);
+
+                if(tiles::has_wire_output(tile.id)) {
+                    auto welem = wiremap.find((IntVec2){ (tilex + x), (tiley + y) });
+                    if(welem != wiremap.end()) {
+                        wire w = welem->second;
+                        BeginTextureMode(tiles::shading_buffer);
+
+                        DrawLineEx((Vector2){(x * size) - (modx * size), (y * size) - (mody * size)}, 
+                        (Vector2){(w.point.x * size) - (modx * size), (w.point.y * size) - (mody * size)},
+                        4, w.powered ? GREEN : RED);
+
+                        EndTextureMode();
+                    }
+                        
+                }
 
                 tiles::draw_tile( 
                     tile,

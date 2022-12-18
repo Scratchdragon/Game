@@ -97,11 +97,18 @@ namespace tiles {
             UnloadTexture(sprites[i]);
     }
 
-    static bool is_air(unsigned short id) {
+    inline static bool is_air(unsigned short id) {
         return id == ID::OXYGEN || id == ID::VACUMN;
     }
-    static bool is_transparent(unsigned short id) {
+    inline static bool is_transparent(unsigned short id) {
         return is_air(id) || id == ID::REINFORCED_WINDOW;
+    }
+
+    inline static bool has_wire_input(unsigned short id) {
+        return id == ID::DOOR;
+    }
+    inline static bool has_wire_output(unsigned short id) {
+        return id == ID::DOOR_PANEL_A || ID::DOOR_PANEL_B;
     }
 
     void draw_tile(tile tile, Vector2 pos, float scale, Color tint, short *wall, short next_to, bool selected) {
@@ -111,6 +118,7 @@ namespace tiles {
         if(selected)
             tint = WHITE;
 
+        // Draw the ground behind transparent tiles
         if(is_transparent(tile.id))
             DrawTextureEx(sprites[ID::VACUMN], {
                 GetRenderWidth()/2.0f + pos.x, 
@@ -118,20 +126,23 @@ namespace tiles {
             }, 0, scale+0.01f // A bit larger to avoid any gaps
             , tint);
 
+        // Draw the tile
         DrawTextureEx(sprites[tile.id], {
             GetRenderWidth()/2.0f + pos.x, 
             GetRenderHeight()/2.0f - pos.y
         }, 0, scale+0.01f // A bit larger to avoid any gaps
         , tint);
 
-        
+        // Check if the tile is selected
         if(selected) {
+            // Draw the digging overlay
             if(!player->digging)
                 DrawTextureEx(select, {
                     GetRenderWidth()/2.0f + pos.x, 
                     GetRenderHeight()/2.0f - pos.y
                 }, 0, scale*2+0.01f // A bit larger to avoid any gaps
                 , tint);
+            // Draw the selection overlay
             else
                 DrawTextureEx(dig_sprites[ (int)(player->dig_progress*29) ], {
                     GetRenderWidth()/2.0f + pos.x, 
@@ -140,7 +151,9 @@ namespace tiles {
                 , tint);
         }
 
+        // Shading and tint
         if(is_air(tile.id)) {
+            // Overlay the gas texture
             unsigned char shade_alpha = 150;
             BeginTextureMode(shading_buffer);
             if(tile.id == ID::OXYGEN) {
@@ -155,11 +168,12 @@ namespace tiles {
                     },
                     { 8*scale, 8*scale },
                     0,
-                    (Color){255, 255, 255, clamp(tile.mass / 9.5f, 0, 200)}
+                    (Color){255, 255, 255, (unsigned char)clamp(tile.mass / 9.5f, 0, 200)}
                 );
                 shade_alpha = 150 - clamp(tile.mass / 20.5f, 0, 150);
             }
             
+            // Wall shading
             if (next_to) {
                 for(int i = 0;i<next_to;++i)
                     DrawTexturePro(
