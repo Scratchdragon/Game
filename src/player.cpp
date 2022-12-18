@@ -4,6 +4,8 @@
 
 #include <math.h>
 
+#include "vec2.h"
+
 #include <iostream>
 using namespace std;
 
@@ -17,7 +19,12 @@ class _player {
 
     // Collision detection
     bool collision = false;
-    
+
+    // Digging values
+    bool digging = false;
+    IntVec2 select = {0, 0};
+    float dig_progress = 0; // Dig progress percentage
+
     Vector2 position = {0, 0};
     float rotation = 0;
 
@@ -29,6 +36,11 @@ class _player {
     _player(Vector2 * window_size) {
         this->sprite = LoadTexture("resources/images/entities/player.png");
         this->window_size = window_size;
+    }
+
+    void tick_update(float dig_speed) {
+        if(digging)
+            dig_progress += 1.0f-dig_speed;
     }
 
     void render() {

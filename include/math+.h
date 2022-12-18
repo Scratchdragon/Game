@@ -1,4 +1,5 @@
-#pragma once
+#ifndef _MATH+_H
+#define _MATH+_H
 
 #include <math.h>
 
@@ -18,8 +19,13 @@ float dec_mod(float a, float b) {
     return float((int)(a * MOD_DEPTH) % (int)(b * MOD_DEPTH)) / MOD_DEPTH;
 }
 
+float clamp(float n, float lower, float upper) {
+  return std::max(lower, std::min(n, upper));
+}
+
 int down_floor(float n) {
     if(n<0)
         return ceil(n);
     return floor(n);
 }
+#endif

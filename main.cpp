@@ -19,21 +19,25 @@ using namespace std;
     #define GLSL_VERSION            100
 #endif
 
-bool debug = true;
+#define DEBUG true
+#define TPS 10
 
 float tile_scale = 2.0f;
+
+// Global variables for input
+Vector2 movement_v = {0, 0};
 float mouse_wheel_v = 0;
 
-Vector2 movement_v = {0, 0};
-
+// Global world variables
 world_map World;
+long long ticks; // The ticks elapsed since game start
 
 bool check_collision(_player * Player) {
     Player->collision = 
-    !tiles::is_air(World.get_tile({(int)(Player->position.x/50 + 0.4), (int)(Player->position.y/50 + 1.4)})) ||
-    !tiles::is_air(World.get_tile({(int)(Player->position.x/50 - 0.4), (int)(Player->position.y/50 + 0.6)})) ||
-    !tiles::is_air(World.get_tile({(int)(Player->position.x/50 - 0.4), (int)(Player->position.y/50 + 1.4)})) ||
-    !tiles::is_air(World.get_tile({(int)(Player->position.x/50 + 0.4), (int)(Player->position.y/50 + 0.6)}));
+    !tiles::is_air(World.get_tile({(int)(Player->position.x/50 + 0.4), (int)(Player->position.y/50 + 1.4)}).id) ||
+    !tiles::is_air(World.get_tile({(int)(Player->position.x/50 - 0.4), (int)(Player->position.y/50 + 0.6)}).id) ||
+    !tiles::is_air(World.get_tile({(int)(Player->position.x/50 - 0.4), (int)(Player->position.y/50 + 1.4)}).id) ||
+    !tiles::is_air(World.get_tile({(int)(Player->position.x/50 + 0.4), (int)(Player->position.y/50 + 0.6)}).id);
     return Player->collision;
 }
 
@@ -65,9 +69,9 @@ void handle_input(_player * Player, float tile_w, Vector2 center) {
     
     // Mouse wheel
     mouse_wheel_v += GetMouseWheelMove()*tile_scale*4;
-    if(mouse_wheel_v > 0 && tile_scale > 5 && !debug)
+    if(mouse_wheel_v > 0 && tile_scale > 5 && !DEBUG)
         mouse_wheel_v = 0; 
-    if(mouse_wheel_v < 0 && tile_scale < 1 && !debug)
+    if(mouse_wheel_v < 0 && tile_scale < 1 && !DEBUG)
         mouse_wheel_v = 0;
 
     if(abs(mouse_wheel_v) <= 0.04) {
@@ -78,6 +82,50 @@ void handle_input(_player * Player, float tile_w, Vector2 center) {
         mouse_wheel_v = round(mouse_wheel_v * 8500)/10000;
         tile_scale += mouse_wheel_v/100;
     }
+    
+    // Update player selected tile
+    float modx = float(
+            pos_modulo(
+                round(Player->position.x)
+                , 50
+            )
+    ) / 50.0f;
+    float mody = float(
+            pos_modulo(
+                round(Player->position.y)
+                , 50
+            )
+    ) / 50.0f;
+
+    int tilex = floor(round(Player->position.x) / 50);
+    int tiley = floor(round(Player->position.y) / 50);
+
+    int x = floor((GetMouseX() + modx*tile_w - center.x) / tile_w) + tilex;
+    int y = floor((center.y - GetMouseY() + mody*tile_w) / tile_w + 1) + tiley;
+    if(x != Player->select.x || y != Player->select.y) {
+        Player->select = {x, y};
+        Player->digging = false;
+    }
+
+    // Mouse buttons
+    if(IsMouseButtonDown(MOUSE_LEFT_BUTTON) || IsMouseButtonDown(MOUSE_RIGHT_BUTTON)) {
+        if(!Player->digging && IsMouseButtonDown(MOUSE_LEFT_BUTTON) && !tiles::is_air(World.get_tile((IntVec2){x, y}).id)) {
+            Player->digging = true;
+            Player->dig_progress = 0;
+        }
+        if(IsMouseButtonDown(MOUSE_RIGHT_BUTTON))
+            World.set_tile({ 
+                (unsigned short)(Player->select.x%16), 
+                (unsigned short)(Player->select.y%16) 
+            }, { 
+                (unsigned short)(Player->select.x/16), 
+                (unsigned short)(Player->select.y/16) 
+            },
+            {tiles::ID::INSULATION, 1500});
+    }
+
+    if(Player->digging && IsMouseButtonReleased(MOUSE_LEFT_BUTTON))
+        Player->digging = false;
 }
 
 int main() {
@@ -96,13 +144,13 @@ int main() {
 
     // Init map
     World = world_map();
-    World.generate_cave({(WORLD_SIZE/2), (WORLD_SIZE/2) - 3}, 18, 50, tiles::ID::GROUND);
+    World.generate_cave({(WORLD_SIZE/2), (WORLD_SIZE/2) - 3}, 10, 9, {tiles::ID::VACUMN, 0});
     World.generate();
-    World.generate_cave((IntVec2){(WORLD_SIZE/2) + 3, (WORLD_SIZE/2) - 3}, 3, 3, tiles::ID::SILT);
+    World.generate_cave((IntVec2){(WORLD_SIZE/2) + 3, (WORLD_SIZE/2) - 3}, 3, 3, {tiles::ID::SILT, 1200});
     World.place_structure(start_zone, {(WORLD_SIZE/2)-(start_zone.width/2), WORLD_SIZE/2-(start_zone.height/2)});
 
     // Load tile textures
-    tiles::load();
+    tiles::load(&Player);
 
     // Rendering speed variables
     SetTargetFPS(120);
@@ -163,9 +211,30 @@ int main() {
 
         // Handle the user input
         handle_input(&Player, tile_w, {window_size.x/2, window_size.y/2});
+
+        if(ticks != int(GetTime()*TPS)) {
+            ticks = int(GetTime()*TPS);
+            World.tick_update();
+            Player.tick_update( tiles::density[World.get_tile(Player.select).id] );
+        }
+
+        // Update player digging status
+        if(Player.dig_progress>=1) {
+            World.set_tile({ 
+                (unsigned short)(Player.select.x%16), 
+                (unsigned short)(Player.select.y%16) 
+            }, { 
+                (unsigned short)(Player.select.x/16), 
+                (unsigned short)(Player.select.y/16) 
+            },
+            {tiles::ID::VACUMN, 0});
+            Player.dig_progress = 0;
+            Player.digging = false;
+        }
     }
 
     // Unload everything
+    World.stop_update_thread();
     Player.unload();
     CloseWindow();
     return 0;

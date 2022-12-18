@@ -1,10 +1,12 @@
 #include <raylib.h>
 
 #include <map>
+#include <vector>
 #include <iostream>
 #include <fstream>
 #include <algorithm>
 #include <cctype>
+#include <thread>
 
 // For big vector2
 #include "vec2.h"
@@ -26,17 +28,17 @@
 #define ORES 1000
 #define DEPOSITS 500
 
-#define DARKNESS 20
+#define DARKNESS 50
 #define LIMIT_LIGHTING false
 
 #define WORLD_SIZE 500 // Max of 4000
 
 using namespace std;
 
+
 struct chunk {
-    long id;
-    unsigned short content[16][16];
-    const unsigned short * operator []( const short x ) const {
+    tiles::tile content[16][16];
+    const tiles::tile * operator []( const short x ) const {
         return content[x];
     }
 };
@@ -73,8 +75,6 @@ Structure LoadStructure(string filename) {
 
         int i = 0;
         while (getline(file, line)) {
-            // Remove the spaces
-            line.erase(remove_if(line.begin(), line.end(), ::isspace), line.end());
             content[i] = line;
             ++i;
         }
@@ -110,20 +110,20 @@ class world_map {
                 set_tile(
                     (UShortVec2){(unsigned short)(x%16), (unsigned short)(y%16)},
                     (UShortVec2){(unsigned short)(x/16), (unsigned short)(y/16)},
-                    s[(UShortVec2){(unsigned short)(x-pos.x), (unsigned short)(y-pos.y)}]
+                    (tiles::tile){s[(UShortVec2){(unsigned short)(x-pos.x), (unsigned short)(y-pos.y)}], 1500}
                 );
             }
         }
     }
 
-    void fill_circle(IntVec2 pos, int radius, unsigned short tile, int randomize) {
+    void fill_circle(IntVec2 pos, int radius, tiles::tile tile, int randomize) {
         for(int x = -radius/2;x<radius/2;++x) {
             for(int y = -radius/2;y<radius/2;++y) {
                 if(pos.x + x < 0 || pos.y + y < 0 || pos.x + x > WORLD_SIZE || pos.y + y > WORLD_SIZE)
                     continue;
 
                 if(dist(pos, (IntVec2){pos.x + x, pos.y + y}) <= radius/2 && !(randomize && (rand()%randomize))) {
-                    if(tiles::is_air(tile) || get_tile(pos) == tiles::ID::STONE)
+                    if(tiles::is_air(tile.id) || get_tile(pos).id == tiles::ID::STONE)
                         set_tile({ 
                             (unsigned short)((pos.x+x)%16), 
                             (unsigned short)((pos.y+y)%16) 
@@ -136,7 +136,7 @@ class world_map {
         }
     }
 
-    void generate_cave(IntVec2 pos, float size, int len, unsigned short tile) {
+    void generate_cave(IntVec2 pos, float size, int len, tiles::tile tile) {
         float direction = (float(rand())/float(RAND_MAX))*(PI*2);
         float sv = 0;
         Vector2 loc = {(float)pos.x, (float)pos.y};
@@ -160,16 +160,16 @@ class world_map {
             IntVec2 pos = {rand()%WORLD_SIZE, rand()%WORLD_SIZE};
             while(dist(pos, (IntVec2){WORLD_SIZE/2, WORLD_SIZE/2}) < 60)
                 pos = {rand()%WORLD_SIZE, rand()%WORLD_SIZE};
-            generate_cave(pos, (rand()%(MAX_CAVE_SIZE-MIN_CAVE_SIZE))+MIN_CAVE_SIZE, (rand()%(MAX_CAVE_LEN-MIN_CAVE_LEN))+MIN_CAVE_LEN, tiles::ID::GROUND);
+            generate_cave(pos, (rand()%(MAX_CAVE_SIZE-MIN_CAVE_SIZE))+MIN_CAVE_SIZE, (rand()%(MAX_CAVE_LEN-MIN_CAVE_LEN))+MIN_CAVE_LEN, {tiles::ID::VACUMN, 0});
             cout << "Generating World: " << round((float(i)/float(CAVE_COUNT))*1000)/10 << "%\n";
         }
 
         for(int i = 0;i<ORES;++i) {
-            fill_circle((IntVec2){rand()%WORLD_SIZE, rand()%WORLD_SIZE}, 1 + (rand()%4), tiles::ID::COPPER, 2);
+            fill_circle((IntVec2){rand()%WORLD_SIZE, rand()%WORLD_SIZE}, 1 + (rand()%4), {tiles::ID::COPPER, 1200}, 2);
         }
 
         for(int i = 0;i<DEPOSITS;++i) {
-            generate_cave((IntVec2){rand()%WORLD_SIZE, rand()%WORLD_SIZE}, 2+(rand()%4), 2+(rand()%2), tiles::ID::SILT);
+            generate_cave((IntVec2){rand()%WORLD_SIZE, rand()%WORLD_SIZE}, 2+(rand()%4), 2+(rand()%2), {tiles::ID::SILT, 1200});
         }
         log = true;
     }
@@ -183,30 +183,41 @@ class world_map {
         return chunkmap.find(pos);
     }
 
-    void set_tile(UShortVec2 rel_pos, UShortVec2 c_pos, unsigned short id) {
+    void set_tile(UShortVec2 rel_pos, UShortVec2 c_pos, tiles::tile tile) {
         auto c = chunkmap.find(c_pos);
         if(c == chunkmap.end()) {
             c = create_chunk(c_pos);
         }
-        c->second.content[rel_pos.x][rel_pos.y] = id;
+        c->second.content[rel_pos.x][rel_pos.y]= tile;
     }
 
-    unsigned short create_tile(UShortVec2 rel_pos, UShortVec2 c_pos) {
+    void set_mass(IntVec2 pos, float mass) {
+        auto c = chunkmap.find((UShortVec2){(unsigned short)(pos.x/16), (unsigned short)(pos.y/16)});
+        if(c == chunkmap.end())
+            return;
+        c->second.content[pos.x%16][pos.y%16].mass = mass;
+    }
+
+    tiles::tile create_tile(UShortVec2 rel_pos, UShortVec2 c_pos) {
         unsigned short id = 0;
+        float mass = 2000;
         float r = float(rand())/float(RAND_MAX);
 
         if(r < 0.998)
             id = tiles::ID::STONE;
-        else
+        else {
             id = tiles::ID::TITANIUM;
+            mass = 1000;
+        }
 
-        set_tile(rel_pos, c_pos, id);
-        return id;
+        set_tile(rel_pos, c_pos, (tiles::tile){id, mass});
+        return (tiles::tile){id, 120};
     }
 
-    unsigned short get_tile(IntVec2 pos) {
+    // Tile getting operations
+    tiles::tile get_tile(IntVec2 pos) {
         if(pos.x<0 || pos.y<0 || pos.x>WORLD_SIZE || pos.y>WORLD_SIZE)
-            return 0;
+            return tiles::VOID_TILE;
 
         auto c = chunkmap.find( (UShortVec2){ 
             (unsigned short)(pos.x/16), 
@@ -214,7 +225,7 @@ class world_map {
         } );
 
         // Create a new tile if the selected tile or its chunk does not exist
-        if(c == chunkmap.end() || c->second[pos.x%16][pos.y%16] == 0) {
+        if(c == chunkmap.end() || c->second[pos.x%16][pos.y%16].id == 0) {
             return create_tile({ 
                 (unsigned short)(pos.x%16), 
                 (unsigned short)(pos.y%16) 
@@ -226,20 +237,118 @@ class world_map {
 
         return c->second[pos.x%16][pos.y%16];
     }
-
-    unsigned short unsafe_get_tile(IntVec2 pos) {
+    tiles::tile unsafe_get_tile(IntVec2 pos) {
         if(pos.x<0 || pos.y<0 || pos.x>WORLD_SIZE || pos.y>WORLD_SIZE)
-            return 0;
+            return tiles::VOID_TILE;
 
         auto c = chunkmap.find( (UShortVec2){ 
             (unsigned short)(pos.x/16), 
             (unsigned short)(pos.y/16) 
         } );
 
-        if(c == chunkmap.end() || c->second[pos.x%16][pos.y%16] == 0)
-            return 0;
+        if(c == chunkmap.end() || c->second[pos.x%16][pos.y%16].id == 0)
+            return tiles::VOID_TILE;
 
         return c->second[pos.x%16][pos.y%16];
+    }
+
+    // Main update tile function
+    static void update_tile(chunk * c, IntVec2 pos, map<UShortVec2, chunk> * chunkmap) {
+        tiles::tile * tile = &c->content[pos.x%16][pos.y%16];
+
+        // Lambdas for tile management
+        auto get_neighbor = [chunkmap, pos](IntVec2 p2) {
+            if(pos.x+p2.x<0 || pos.y+p2.y<0 || pos.x+p2.x>WORLD_SIZE || pos.y+p2.y>WORLD_SIZE)
+                return tiles::VOID_TILE;
+
+            auto c = chunkmap->find((UShortVec2){
+                (unsigned short)((pos.x+p2.x)/16),
+                (unsigned short)((pos.y+p2.y)/16)
+            });
+
+            if(c == chunkmap->end())
+                return tiles::VOID_TILE;
+
+            return c->second.content[(pos.x+p2.x)%16][(pos.y+p2.y)%16];
+        };
+        auto set_neighbor_mass = [chunkmap, pos](IntVec2 p2, float mass) {
+            chunk * c = &chunkmap->find((UShortVec2){
+                (unsigned short)((pos.x+p2.x)/16),
+                (unsigned short)((pos.y+p2.y)/16)
+            })->second;
+            c->content[(pos.x+p2.x)%16][(pos.y+p2.y)%16].mass = mass;
+        };
+
+        IntVec2 neighbor;
+        float old = tile->mass;
+        switch(tile->id) {
+            case tiles::ID::OXYGEN:
+            case tiles::ID::VACUMN:
+                if(tile->id == tiles::ID::VACUMN)
+                    tile->mass = 0;
+
+                neighbor = (IntVec2){0, -1};
+                if(tiles::is_air(get_neighbor(neighbor).id) && get_neighbor(neighbor).mass > tile->mass) {
+                    tile->mass = float(tile->mass + get_neighbor(neighbor).mass)/2.0f;
+                    set_neighbor_mass(neighbor, get_neighbor(neighbor).mass - (tile->mass-old));
+                    if(tile->id == tiles::ID::VACUMN)
+                        tile->id = get_neighbor(neighbor).id;
+                }
+                neighbor = (IntVec2){0, 1};
+                old = tile->mass;
+                if(tiles::is_air(get_neighbor(neighbor).id) && get_neighbor(neighbor).mass > tile->mass) {
+                    tile->mass = float((tile->mass) + get_neighbor(neighbor).mass)/2.0f;
+                    set_neighbor_mass(neighbor, get_neighbor(neighbor).mass - (tile->mass-old));
+                    if(tile->id == tiles::ID::VACUMN)
+                        tile->id = get_neighbor(neighbor).id;
+                }
+                neighbor = (IntVec2){-1, 0};
+                old = tile->mass;
+                if(tiles::is_air(get_neighbor(neighbor).id) && get_neighbor(neighbor).mass > tile->mass) {
+                    tile->mass = float((tile->mass) + get_neighbor(neighbor).mass)/2.0f;
+                    set_neighbor_mass(neighbor, get_neighbor(neighbor).mass - (tile->mass-old));
+                    if(tile->id == tiles::ID::VACUMN)
+                        tile->id = get_neighbor(neighbor).id;
+                }
+                neighbor = (IntVec2){1, 0};
+                old = tile->mass;
+                if(tiles::is_air(get_neighbor(neighbor).id) && get_neighbor(neighbor).mass > tile->mass) {
+                    tile->mass = float((tile->mass) + get_neighbor(neighbor).mass)/2.0f;
+                    set_neighbor_mass(neighbor, get_neighbor(neighbor).mass - (tile->mass-old));
+                    if(tile->id == tiles::ID::VACUMN)
+                        tile->id = get_neighbor(neighbor).id;
+                }
+            default:
+                return;
+        }
+    }
+
+    // Update operations
+    thread updater_thread;
+    static void run_updates(map<UShortVec2, chunk> * chunkmap) {
+        for(auto &chunk : *chunkmap) {
+            for(unsigned short x = 0;x<16;++x) {
+                for(unsigned short y = 0;y<16;++y) {
+                    update_tile( 
+                        &chunk.second,
+                        (IntVec2){
+                            (chunk.first.x*16) + x,
+                            (chunk.first.y*16) + y
+                        },
+                        chunkmap
+                    );
+                }
+            }
+        }
+        return;
+    }
+    void tick_update() {
+        if(updater_thread.joinable())
+            updater_thread.join();
+        updater_thread = thread(run_updates, &chunkmap);
+    }
+    void stop_update_thread() {
+        updater_thread.join();
     }
 
     // How many extra tiles to render
@@ -267,7 +376,7 @@ class world_map {
         int tilew = ceil(GetRenderWidth()/size);
         int tileh = ceil(GetRenderHeight()/size);
 
-        unsigned short tile = 0;
+        tiles::tile tile;
         short *wall;
         short i = 0;
 
@@ -284,12 +393,12 @@ class world_map {
 
                 if (LIMIT_LIGHTING && distance > 15) {
                     brightness = 255 - (DARKNESS*2);
-                    if(tiles::is_air(tile) && brightness > 255 - (DARKNESS*2) && round(distance) == 15) 
+                    if(tiles::is_transparent(tile.id) && brightness > 255 - (DARKNESS*2) && round(distance) == 15) 
                         brightness = 255 - DARKNESS;
                 }
                 else {
                     for(float d = 0; d < distance; d+=0.45) {
-                        if( !tiles::is_air(get_tile({ (int)(tilex + sin(r)*d + 0.5), (int)(tiley - cos(r)*d + 1) })) ) {
+                        if(!tiles::is_transparent(get_tile({ (int)(tilex + sin(r)*d + 0.5), (int)(tiley - cos(r)*d + 1) }).id) ) {
                             brightness-=DARKNESS;
                             if(brightness <= 255 - (DARKNESS*2))
                                 break;
@@ -298,21 +407,21 @@ class world_map {
                 }
 
                 i=0;
-                if(tiles::is_air(tile)) {
+                if(tiles::is_air(tile.id)) {
                     wall = new short[4];
-                    if(!tiles::is_air(get_tile({tilex + x + 1, tiley + y}))) {
+                    if(!tiles::is_air(get_tile({tilex + x + 1, tiley + y}).id)) {
                         wall[i] = 0;
                         ++i;
                     }
-                    if(!tiles::is_air(get_tile({tilex + x - 1, tiley + y}))) {
+                    if(!tiles::is_air(get_tile({tilex + x - 1, tiley + y}).id)) {
                         wall[i] = 180;
                         ++i;
                     }
-                    if(!tiles::is_air(get_tile({tilex + x, tiley + y + 1}))) {
+                    if(!tiles::is_air(get_tile({tilex + x, tiley + y + 1}).id)) {
                         wall[i] = 90;
                         ++i;
                     }
-                    if(!tiles::is_air(get_tile({tilex + x, tiley + y - 1}))) {
+                    if(!tiles::is_air(get_tile({tilex + x, tiley + y - 1}).id)) {
                         wall[i] = 270;
                         ++i;
                     }
@@ -332,5 +441,7 @@ class world_map {
                 );
             }
         }
+
+        DrawText(("Mass: " + to_string((int)round(get_tile(player->select).mass))).c_str(), GetMouseX(), GetMouseY(), 10, WHITE);
     }
 };
