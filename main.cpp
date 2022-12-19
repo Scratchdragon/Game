@@ -219,7 +219,6 @@ int main() {
 
         if(ticks != int(GetTime()*TPS)) {
             ticks = int(GetTime()*TPS);
-            World.tick_update(&Player);
             Player.tick_update( tiles::tile_prefabs[World.get_tile(Player.select).id].density);
             IntVec2 player_pos = (IntVec2){(int)(Player.position.x/50), (int)(Player.position.y/50)+1};
             tiles::tile t = World.get_tile(player_pos);
@@ -227,6 +226,7 @@ int main() {
                 World.set_mass(player_pos, t.mass - 10);
             if(t.mass < 0)
                 World.set_mass(player_pos, 0);
+            World.tick_update(&Player);
         }
 
         // Update player digging status

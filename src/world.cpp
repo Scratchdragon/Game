@@ -335,6 +335,31 @@ class world_map {
             c->content[(pos.x+p2.x)%16][(pos.y+p2.y)%16].id = id;
         };
 
+        auto swap_neighbors = [set_neighbor_id, set_neighbor_mass, get_neighbor](IntVec2 pos_a, IntVec2 pos_b) {
+            tiles::tile a = get_neighbor(pos_a);
+            tiles::tile b = get_neighbor(pos_b);
+            set_neighbor_id(pos_a, b.id);
+            set_neighbor_mass(pos_a, b.mass);
+            set_neighbor_id(pos_b, a.id);
+            set_neighbor_mass(pos_b, a.mass);
+        };
+
+        auto blend_neighbors_mass = [set_neighbor_mass, get_neighbor, set_neighbor_id] (IntVec2 pos_a, IntVec2 pos_b) {
+            tiles::tile a = get_neighbor(pos_a);
+            tiles::tile b = get_neighbor(pos_b);
+            if(a.id != b.id && a.id != tiles::ID::VACUMN && b.id != tiles::ID::VACUMN)
+                return;
+
+            if(a.id == tiles::ID::VACUMN)
+                set_neighbor_id(pos_a, b.id);
+            if(b.id == tiles::ID::VACUMN)
+                set_neighbor_id(pos_b, a.id);
+
+            float mass = (a.mass + b.mass)/2;
+            set_neighbor_mass(pos_a, mass);
+            set_neighbor_mass(pos_b, mass);
+        };
+
         IntVec2 neighbor;
         IntVec2 neighbors[4] = {
             {1, 0},
@@ -357,7 +382,7 @@ class world_map {
                     neighbor = neighbors[rand()%4];
 
                 set_neighbor_id(neighbor, tiles::ID::OXYGEN);
-                set_neighbor_mass(neighbor, get_neighbor(neighbor).mass + 100);
+                set_neighbor_mass(neighbor, get_neighbor(neighbor).mass + 10);
                 break;
             case tiles::ID::DOOR_PANEL_A:
             case tiles::ID::DOOR_PANEL_B:
@@ -375,9 +400,7 @@ class world_map {
                 // If the tile above and below the door is air
                 if(tiles::is_air(get_neighbor((IntVec2){0, 1}).id) && tiles::is_air(get_neighbor((IntVec2){0, -1}).id)) {
                     // Average the two tiles masses together as if they where next to eachother
-                    float mass = (get_neighbor((IntVec2){0, -1}).mass + get_neighbor((IntVec2){0, 1}).mass) / 2.0f;
-                    set_neighbor_mass((IntVec2){0, -1}, mass);
-                    set_neighbor_mass((IntVec2){0, 1}, mass);
+                    blend_neighbors_mass((IntVec2){0, 1}, (IntVec2){0, -1});
                 }
                 break;
             case tiles::ID::OXYGEN:
