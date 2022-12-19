@@ -17,6 +17,9 @@ struct IntVec2 {
     IntVec2 operator/( const IntVec2 &rhs ) const {
         return (IntVec2){ x/rhs.x, y/rhs.y };
     }
+    bool operator==( const IntVec2 &rhs ) const {
+        return rhs.x == x && rhs.y == y;
+    }
 };
 
 // Vector2 with long values
@@ -95,6 +98,9 @@ struct UShortVec2 {
 
     bool operator <( const UShortVec2 &rhs ) const {
         return id() < rhs.id();
+    }
+    bool operator==( const UShortVec2 &rhs ) const {
+        return rhs.x == x && rhs.y == y;
     }
 };
 

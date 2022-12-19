@@ -19,7 +19,7 @@ using namespace std;
     #define GLSL_VERSION            100
 #endif
 
-#define DEBUG true
+#define DEBUG false
 #define TPS 10
 
 float tile_scale = 2.0f;
@@ -34,10 +34,10 @@ long long ticks; // The ticks elapsed since game start
 
 bool check_collision(_player * Player) {
     Player->collision = 
-    !tiles::is_air(World.get_tile({(int)(Player->position.x/50 + 0.4), (int)(Player->position.y/50 + 1.4)}).id) ||
-    !tiles::is_air(World.get_tile({(int)(Player->position.x/50 - 0.4), (int)(Player->position.y/50 + 0.6)}).id) ||
-    !tiles::is_air(World.get_tile({(int)(Player->position.x/50 - 0.4), (int)(Player->position.y/50 + 1.4)}).id) ||
-    !tiles::is_air(World.get_tile({(int)(Player->position.x/50 + 0.4), (int)(Player->position.y/50 + 0.6)}).id);
+    tiles::is_collidable(World.get_tile({(int)(Player->position.x/50 + 0.4), (int)(Player->position.y/50 + 1.4)}).id) ||
+    tiles::is_collidable(World.get_tile({(int)(Player->position.x/50 - 0.4), (int)(Player->position.y/50 + 0.6)}).id) ||
+    tiles::is_collidable(World.get_tile({(int)(Player->position.x/50 - 0.4), (int)(Player->position.y/50 + 1.4)}).id) ||
+    tiles::is_collidable(World.get_tile({(int)(Player->position.x/50 + 0.4), (int)(Player->position.y/50 + 0.6)}).id);
     return Player->collision;
 }
 
@@ -105,6 +105,7 @@ void handle_input(_player * Player, float tile_w, Vector2 center) {
     if(x != Player->select.x || y != Player->select.y) {
         Player->select = {x, y};
         Player->digging = false;
+        Player->interact = false;
     }
 
     // Mouse buttons
@@ -113,7 +114,7 @@ void handle_input(_player * Player, float tile_w, Vector2 center) {
             Player->digging = true;
             Player->dig_progress = 0;
         }
-        if(IsMouseButtonDown(MOUSE_RIGHT_BUTTON))
+        if(IsMouseButtonDown(MOUSE_RIGHT_BUTTON) && tiles::is_air(World.get_tile((IntVec2){x, y}).id))
             World.set_tile({ 
                 (unsigned short)(Player->select.x%16), 
                 (unsigned short)(Player->select.y%16) 
@@ -123,6 +124,8 @@ void handle_input(_player * Player, float tile_w, Vector2 center) {
             },
             {tiles::ID::INSULATION, 1500});
     }
+    if(IsMouseButtonReleased(MOUSE_RIGHT_BUTTON) && !Player->interact)
+        Player->interact = true;
 
     if(Player->digging && IsMouseButtonReleased(MOUSE_LEFT_BUTTON))
         Player->digging = false;
@@ -144,10 +147,12 @@ int main() {
 
     // Init map
     World = world_map();
-    World.generate_cave({(WORLD_SIZE/2), (WORLD_SIZE/2) - 3}, 10, 9, {tiles::ID::VACUMN, 0});
     World.generate();
-    World.generate_cave((IntVec2){(WORLD_SIZE/2) + 3, (WORLD_SIZE/2) - 3}, 3, 3, {tiles::ID::SILT, 1200});
+    World.generate_cave({(WORLD_SIZE/2), (WORLD_SIZE/2) - 3}, 10, 9, {tiles::ID::OXYGEN, 1400});
+    World.generate_cave((IntVec2){(WORLD_SIZE/2), (WORLD_SIZE/2) - 6}, 3, 3, {tiles::ID::SILT, 1200});
+    
     World.place_structure(start_zone, {(WORLD_SIZE/2)-(start_zone.width/2), WORLD_SIZE/2-(start_zone.height/2)});
+    
 
     // Load tile textures
     tiles::load(&Player);
@@ -214,8 +219,14 @@ int main() {
 
         if(ticks != int(GetTime()*TPS)) {
             ticks = int(GetTime()*TPS);
-            World.tick_update();
-            Player.tick_update( tiles::density[World.get_tile(Player.select).id] );
+            World.tick_update(&Player);
+            Player.tick_update( tiles::tile_prefabs[World.get_tile(Player.select).id].density);
+            IntVec2 player_pos = (IntVec2){(int)(Player.position.x/50), (int)(Player.position.y/50)+1};
+            tiles::tile t = World.get_tile(player_pos);
+            if(t.id == tiles::ID::OXYGEN)
+                World.set_mass(player_pos, t.mass - 10);
+            if(t.mass < 0)
+                World.set_mass(player_pos, 0);
         }
 
         // Update player digging status

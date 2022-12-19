@@ -29,7 +29,7 @@
 #define DEPOSITS 500
 
 #define DARKNESS 50
-#define LIMIT_LIGHTING false
+#define LIMIT_LIGHTING true
 
 #define WORLD_SIZE 500 // Max of 4000
 
@@ -37,16 +37,18 @@ using namespace std;
 
 
 struct wire {
-    IntVec2 point;
+    IntVec2 a;
+    IntVec2 b;
     bool powered = false;
 };
 
 struct chunk {
     tiles::tile content[16][16];
+    unsigned short biome;
     const tiles::tile * operator []( const short x ) const {
         return content[x];
     }
-};
+}null_chunk;
 
 struct tile_column {
     unsigned short *column;
@@ -109,17 +111,18 @@ class world_map {
 
     bool show_wires = false;
 
-    map<IntVec2, wire> wiremap;
     map<UShortVec2, chunk> chunkmap;
 
     void place_structure(Structure s, IntVec2 pos) {
         for(int x = pos.x;x<pos.x+s.width;++x) {
             for(int y = pos.y;y<pos.y+s.height;++y) {
-                set_tile(
-                    (UShortVec2){(unsigned short)(x%16), (unsigned short)(y%16)},
-                    (UShortVec2){(unsigned short)(x/16), (unsigned short)(y/16)},
-                    (tiles::tile){s[(UShortVec2){(unsigned short)(x-pos.x), (unsigned short)(y-pos.y)}], 1500}
-                );
+                unsigned short id = s[(UShortVec2){(unsigned short)(x-pos.x), (unsigned short)(y-pos.y)}];
+                if(id)
+                    set_tile(
+                        (UShortVec2){(unsigned short)(x%16), (unsigned short)(y%16)},
+                        (UShortVec2){(unsigned short)(x/16), (unsigned short)(y/16)},
+                        (tiles::tile){id, tiles::tile_prefabs[id].mass}
+                    );
             }
         }
     }
@@ -173,17 +176,17 @@ class world_map {
         }
 
         for(int i = 0;i<ORES;++i) {
-            fill_circle((IntVec2){rand()%WORLD_SIZE, rand()%WORLD_SIZE}, 1 + (rand()%4), {tiles::ID::COPPER, 1200}, 2);
+            fill_circle((IntVec2){rand()%WORLD_SIZE, rand()%WORLD_SIZE}, 1 + (rand()%4), tiles::from_id(tiles::ID::COPPER), 2);
         }
 
         for(int i = 0;i<DEPOSITS;++i) {
-            generate_cave((IntVec2){rand()%WORLD_SIZE, rand()%WORLD_SIZE}, 2+(rand()%4), 2+(rand()%2), {tiles::ID::SILT, 1200});
+            generate_cave((IntVec2){rand()%WORLD_SIZE, rand()%WORLD_SIZE}, 2+(rand()%4), 2+(rand()%2), tiles::from_id(tiles::ID::SILT));
         }
         log = true;
     }
 
     auto create_chunk(UShortVec2 pos) {
-        chunkmap.insert(pair<UShortVec2, chunk>( pos, chunk() ));
+        chunkmap.insert(pair<UShortVec2, chunk>( pos, null_chunk ));
         if(log) {
             cout << "[World] -> New chunk made at " << pos.x << ", " << pos.y << " (id: " << pos.id() << ")\n";
             cout << "               Map size increased to " << pretty_size( chunkmap.size() * (sizeof(chunk) + sizeof(UShortVec2)) ) << endl;
@@ -198,6 +201,18 @@ class world_map {
         }
         c->second.content[rel_pos.x][rel_pos.y]= tile;
     }
+    chunk * get_chunk(UShortVec2 pos) {
+        if(pos.x<0 || pos.y<0 || pos.x>WORLD_SIZE/16 || pos.y>WORLD_SIZE/16)
+            return &null_chunk;
+
+        auto c = chunkmap.find(pos);
+
+        // Create a new tile if the selected tile or its chunk does not exist
+        if(c == chunkmap.end())
+            return &null_chunk;
+
+        return &c->second;
+    }
 
     void set_mass(IntVec2 pos, float mass) {
         auto c = chunkmap.find((UShortVec2){(unsigned short)(pos.x/16), (unsigned short)(pos.y/16)});
@@ -208,18 +223,27 @@ class world_map {
 
     tiles::tile create_tile(UShortVec2 rel_pos, UShortVec2 c_pos) {
         unsigned short id = 0;
-        float mass = 2000;
         float r = float(rand())/float(RAND_MAX);
 
         if(r < 0.998)
             id = tiles::ID::STONE;
-        else {
+        else
             id = tiles::ID::TITANIUM;
-            mass = 1000;
-        }
 
-        set_tile(rel_pos, c_pos, (tiles::tile){id, mass});
-        return (tiles::tile){id, 120};
+        set_tile(rel_pos, c_pos, (tiles::tile){id, tiles::tile_prefabs[id].mass});
+        return (tiles::tile){id, tiles::tile_prefabs[id].mass};
+    }
+    tiles::tile create_tile_c(UShortVec2 pos, chunk * c) {
+        unsigned short id = 0;
+        float r = float(rand())/float(RAND_MAX);
+
+        if(r < 0.998)
+            id = tiles::ID::STONE;
+        else
+            id = tiles::ID::TITANIUM;
+
+        c->content[pos.x][pos.y] = (tiles::tile){id, tiles::tile_prefabs[id].mass};
+        return (tiles::tile){id, tiles::tile_prefabs[id].mass};
     }
 
     // Tile getting operations
@@ -245,6 +269,23 @@ class world_map {
 
         return c->second[pos.x%16][pos.y%16];
     }
+    tiles::tile get_tile_c(UShortVec2 pos, chunk * c) {
+        if(pos.x<0 || pos.y<0 || pos.x>15 || pos.y>15)
+            return tiles::VOID_TILE;
+        // Create a new tile if the selected tile or its chunk does not exist
+        if(c->content[pos.x][pos.y].id == 0)
+            return create_tile_c(pos, c);
+        return c->content[pos.x][pos.y];
+    }
+    tiles::tile get_tile_c_safe(IntVec2 abs_pos, UShortVec2 c_pos, chunk * c) {
+        if(abs_pos.x<0 || abs_pos.y<0 || abs_pos.x>WORLD_SIZE || abs_pos.y>WORLD_SIZE)
+            return tiles::VOID_TILE;
+        if(c_pos.x != (unsigned short)(abs_pos.x/16) || c_pos.y != (unsigned short)(abs_pos.y/16) )
+            return get_tile(abs_pos);
+        else
+            return get_tile_c((UShortVec2){(unsigned short)(abs_pos.x%16), (unsigned short)(abs_pos.y%16)}, c);
+    }
+
     tiles::tile unsafe_get_tile(IntVec2 pos) {
         if(pos.x<0 || pos.y<0 || pos.x>WORLD_SIZE || pos.y>WORLD_SIZE)
             return tiles::VOID_TILE;
@@ -261,7 +302,7 @@ class world_map {
     }
 
     // Main update tile function
-    static void update_tile(chunk * c, IntVec2 pos, map<UShortVec2, chunk> * chunkmap) {
+    static void update_tile(chunk * c, IntVec2 pos, map<UShortVec2, chunk> * chunkmap, _player * Player) {
         tiles::tile * tile = &c->content[pos.x%16][pos.y%16];
 
         // Lambdas for tile management
@@ -286,11 +327,64 @@ class world_map {
             })->second;
             c->content[(pos.x+p2.x)%16][(pos.y+p2.y)%16].mass = mass;
         };
+        auto set_neighbor_id = [chunkmap, pos](IntVec2 p2, unsigned short id) {
+            chunk * c = &chunkmap->find((UShortVec2){
+                (unsigned short)((pos.x+p2.x)/16),
+                (unsigned short)((pos.y+p2.y)/16)
+            })->second;
+            c->content[(pos.x+p2.x)%16][(pos.y+p2.y)%16].id = id;
+        };
 
         IntVec2 neighbor;
+        IntVec2 neighbors[4] = {
+            {1, 0},
+            {-1, 0},
+            {0, 1},
+            {0, -1}
+        };
+        int i = 0;
         float old = tile->mass;
         switch(tile->id) {
+            case tiles::ID::GAS_OUTLET:
+                for(i=0;i<5;++i) {
+                    if(i==4)
+                        return;
+                    if(get_neighbor(neighbors[i]).id == tiles::ID::VACUMN || get_neighbor(neighbors[i]).id == tiles::ID::OXYGEN)
+                        break;
+                }
+                
+                while(get_neighbor(neighbor).id != tiles::ID::VACUMN && get_neighbor(neighbor).id != tiles::ID::OXYGEN)
+                    neighbor = neighbors[rand()%4];
+
+                set_neighbor_id(neighbor, tiles::ID::OXYGEN);
+                set_neighbor_mass(neighbor, get_neighbor(neighbor).mass + 100);
+                break;
+            case tiles::ID::DOOR_PANEL_A:
+            case tiles::ID::DOOR_PANEL_B:
+                if(Player->select == pos && Player->interact) {
+                    for(int x = -4; x < 5;++x) {
+                        if(get_neighbor((IntVec2){x, 0}).id == tiles::ID::DOOR)
+                            set_neighbor_id((IntVec2){x, 0}, tiles::ID::DOOR_OPEN);
+                        else if(get_neighbor((IntVec2){x, 0}).id == tiles::ID::DOOR_OPEN)
+                            set_neighbor_id((IntVec2){x, 0}, tiles::ID::DOOR);
+                    }
+                    Player->interact = false;
+                }
+                break;
+            case tiles::ID::DOOR_OPEN:
+                // If the tile above and below the door is air
+                if(tiles::is_air(get_neighbor((IntVec2){0, 1}).id) && tiles::is_air(get_neighbor((IntVec2){0, -1}).id)) {
+                    // Average the two tiles masses together as if they where next to eachother
+                    float mass = (get_neighbor((IntVec2){0, -1}).mass + get_neighbor((IntVec2){0, 1}).mass) / 2.0f;
+                    set_neighbor_mass((IntVec2){0, -1}, mass);
+                    set_neighbor_mass((IntVec2){0, 1}, mass);
+                }
+                break;
             case tiles::ID::OXYGEN:
+                if(tile->mass < 0.1) {
+                    tile->mass = 0;
+                    tile->id = tiles::ID::VACUMN;
+                }
             case tiles::ID::VACUMN:
                 if(tile->id == tiles::ID::VACUMN)
                     tile->mass = 0;
@@ -333,7 +427,7 @@ class world_map {
 
     // Update operations
     thread updater_thread;
-    static void run_updates(map<UShortVec2, chunk> * chunkmap) {
+    static void run_updates(map<UShortVec2, chunk> * chunkmap, _player * Player) {
         for(auto &chunk : *chunkmap) {
             for(unsigned short x = 0;x<16;++x) {
                 for(unsigned short y = 0;y<16;++y) {
@@ -343,17 +437,18 @@ class world_map {
                             (chunk.first.x*16) + x,
                             (chunk.first.y*16) + y
                         },
-                        chunkmap
+                        chunkmap,
+                        Player
                     );
                 }
             }
         }
         return;
     }
-    void tick_update() {
+    void tick_update(_player * Player) {
         if(updater_thread.joinable())
             updater_thread.join();
-        updater_thread = thread(run_updates, &chunkmap);
+        updater_thread = thread(run_updates, &chunkmap, Player);
     }
     void stop_update_thread() {
         updater_thread.join();
@@ -362,6 +457,97 @@ class world_map {
     // How many extra tiles to render
     //                      left  right  top  bottom
     Vector4 r_padding = {  2,     2,    2,    9};
+
+    void render_tile(UShortVec2 pos, chunk * c, UShortVec2 c_pos, int x, int y, int tilex, int tiley, float size, float scale, float modx, float mody) {
+        tiles::tile tile = get_tile_c(pos, c);
+        unsigned char brightness = 255;
+        float r = PI - atan2(x, y);
+        float distance = dist((Vector2){0, 0.75}, (Vector2){float(x), float(y)});
+
+        if (LIMIT_LIGHTING && distance > 15) {
+            brightness = 255 - (DARKNESS*2);
+            if(tiles::is_transparent(tile.id) && brightness > 255 - (DARKNESS*2) && round(distance) == 15) 
+                brightness = 255 - DARKNESS;
+        }
+        else {
+            for(float d = 0; d < distance; d+=0.45) {
+                if(!tiles::is_transparent(get_tile_c_safe({ (int)(tilex + sin(r)*d + 0.5), (int)(tiley - cos(r)*d + 1) }, c_pos, c).id) ) {
+                    brightness-=DARKNESS;
+                    if(brightness <= 255 - (DARKNESS*2))
+                        break;
+                }
+            }
+        }
+            
+        if(tiles::is_air(tile.id)) {
+            int wall[4];
+            int i=0;
+            if(tiles::is_collidable(get_tile_c_safe({tilex + x + 1, tiley + y}, c_pos, c).id)) {
+                wall[i] = 0;
+                ++i;
+            }
+            if(tiles::is_collidable(get_tile_c_safe({tilex + x - 1, tiley + y}, c_pos, c).id)) {
+                wall[i] = 180;
+                ++i;
+            }
+            if(tiles::is_collidable(get_tile_c_safe({tilex + x, tiley + y + 1}, c_pos, c).id)) {
+                wall[i] = 90;
+                ++i;
+            }
+            if(tiles::is_collidable(get_tile_c_safe({tilex + x, tiley + y - 1}, c_pos, c).id)) {
+                wall[i] = 270;
+                ++i;
+            }
+            tiles::draw_tile( 
+                tile,
+                {(x * size) - (modx * size), (y * size) - (mody * size)},
+                scale,
+                (Color){brightness, brightness, brightness, 255},
+                wall,
+                i,
+                GetMousePosition().x - GetRenderWidth()/2 > (x * size) - (modx * size) && GetMousePosition().x - GetRenderWidth()/2 < ((x+1) * size) - (modx * size) &&
+                GetRenderHeight()/2 - GetMousePosition().y > ((y-1) * size) - (mody * size) && GetRenderHeight()/2 - GetMousePosition().y < (y * size) - (mody * size)
+            );
+        }
+        else if(tiles::is_not_airtight(tile.id)) {
+            if(brightness > 255 - (DARKNESS*2))
+                brightness = 265 - (DARKNESS*2);
+            tiles::tile gas = tiles::VOID_TILE;
+            if(tiles::is_air(get_tile_c_safe({tilex + x + 1, tiley + y}, c_pos, c).id))
+                gas = get_tile_c_safe({tilex + x + 1, tiley + y}, c_pos, c);
+            else if(tiles::is_air(get_tile_c_safe({tilex + x - 1, tiley + y}, c_pos, c).id))
+                gas = get_tile_c_safe({tilex + x - 1, tiley + y}, c_pos, c);
+            else if(tiles::is_air(get_tile_c_safe({tilex + x, tiley + y + 1}, c_pos, c).id))
+                gas = get_tile_c_safe({tilex + x, tiley + y + 1}, c_pos, c);
+            else if(tiles::is_air(get_tile_c_safe({tilex + x, tiley + y - 1}, c_pos, c).id))
+                gas = get_tile_c_safe({tilex + x, tiley + y - 1}, c_pos, c);
+            tiles::draw_tile( 
+                tile,
+                {(x * size) - (modx * size), (y * size) - (mody * size)},
+                scale,
+                (Color){brightness, brightness, brightness, 255},
+                {},
+                0,
+                GetMousePosition().x - GetRenderWidth()/2 > (x * size) - (modx * size) && GetMousePosition().x - GetRenderWidth()/2 < ((x+1) * size) - (modx * size) &&
+                GetRenderHeight()/2 - GetMousePosition().y > ((y-1) * size) - (mody * size) && GetRenderHeight()/2 - GetMousePosition().y < (y * size) - (mody * size),
+                gas
+            );
+        }
+        else {
+            if(brightness > 255 - (DARKNESS*2))
+                brightness = 265 - (DARKNESS*2);
+            tiles::draw_tile( 
+                tile,
+                {(x * size) - (modx * size), (y * size) - (mody * size)},
+                scale,
+                (Color){brightness, brightness, brightness, 255},
+                {},
+                0,
+                GetMousePosition().x - GetRenderWidth()/2 > (x * size) - (modx * size) && GetMousePosition().x - GetRenderWidth()/2 < ((x+1) * size) - (modx * size) &&
+                GetRenderHeight()/2 - GetMousePosition().y > ((y-1) * size) - (mody * size) && GetRenderHeight()/2 - GetMousePosition().y < (y * size) - (mody * size)
+            );
+        }
+    }
 
     void render(_player * player, float size, float scale) {
         // Get the tile position of the player
@@ -384,87 +570,39 @@ class world_map {
         int tilew = ceil(GetRenderWidth()/size);
         int tileh = ceil(GetRenderHeight()/size);
 
-        tiles::tile tile;
-        short *wall;
-        short i = 0;
+        // Get the chunks in view 
+        for(unsigned short chunk_y = ((-tileh/2) - r_padding.z + tiley) / 16; chunk_y < ((tileh/2) + r_padding.w + tiley) / 16; ++chunk_y) {
+            for(unsigned short chunk_x = ((-tilew/2) - r_padding.x + tilex) / 16; chunk_x < ((tilew/2) + r_padding.y + tilex) / 16; ++chunk_x) {
+                // Rendering chunk by chunk is faster than rendering tile by tile since it means we only have the get the chunk once per chunk instead of once per tile
+                chunk * c = get_chunk((UShortVec2){chunk_x, chunk_y});
+                int x;
+                int y;
 
-        float r, distance;
-        unsigned char brightness;
-
-        for(int y = (-tileh/2) - r_padding.z; y < (tileh/2) + r_padding.w; ++y) {
-            for(int x = (-tilew/2) - r_padding.x; x < (tilew/2) + r_padding.y; ++x) {
-                brightness = 255;
-                r = PI - atan2(x, y);
-                distance = dist((Vector2){0, 0.75}, (Vector2){float(x), float(y)});
-
-                tile = get_tile({ (tilex + x), (tiley + y) });
-
-                if (LIMIT_LIGHTING && distance > 15) {
-                    brightness = 255 - (DARKNESS*2);
-                    if(tiles::is_transparent(tile.id) && brightness > 255 - (DARKNESS*2) && round(distance) == 15) 
-                        brightness = 255 - DARKNESS;
-                }
-                else {
-                    for(float d = 0; d < distance; d+=0.45) {
-                        if(!tiles::is_transparent(get_tile({ (int)(tilex + sin(r)*d + 0.5), (int)(tiley - cos(r)*d + 1) }).id) ) {
-                            brightness-=DARKNESS;
-                            if(brightness <= 255 - (DARKNESS*2))
-                                break;
-                        }
+                // Loop over each tile in the chunk
+                for(unsigned short rel_y = 0; rel_y < 16; ++rel_y) {
+                    for(unsigned short rel_x = 0; rel_x < 16; ++rel_x) {
+                        // The tile relative to the players view
+                        x = (chunk_x*16) - tilex + rel_x;
+                        y = (chunk_y*16) - tiley + rel_y;
+                        render_tile(
+                            { rel_x, rel_y },   // Position within the chunk
+                            c,                  // The chunk itself
+                            {chunk_x, chunk_y}, // Position of the chunk
+                            x,                  // Tile position relitive to player
+                            y,
+                            tilex,              // The position of the player
+                            tiley,
+                            size,               // The width/height of a tile
+                            scale,              // How zoomed in the game is
+                            modx,               // How many pixels to offset the tile by to make the scrolling appear smooth
+                            mody
+                        );
                     }
                 }
-
-                i=0;
-                if(tiles::is_air(tile.id)) {
-                    wall = new short[4];
-                    if(!tiles::is_air(get_tile({tilex + x + 1, tiley + y}).id)) {
-                        wall[i] = 0;
-                        ++i;
-                    }
-                    if(!tiles::is_air(get_tile({tilex + x - 1, tiley + y}).id)) {
-                        wall[i] = 180;
-                        ++i;
-                    }
-                    if(!tiles::is_air(get_tile({tilex + x, tiley + y + 1}).id)) {
-                        wall[i] = 90;
-                        ++i;
-                    }
-                    if(!tiles::is_air(get_tile({tilex + x, tiley + y - 1}).id)) {
-                        wall[i] = 270;
-                        ++i;
-                    }
-                }
-                else if(brightness > 255 - (DARKNESS*2))
-                    brightness = 265 - (DARKNESS*2);
-
-                if(tiles::has_wire_output(tile.id)) {
-                    auto welem = wiremap.find((IntVec2){ (tilex + x), (tiley + y) });
-                    if(welem != wiremap.end()) {
-                        wire w = welem->second;
-                        BeginTextureMode(tiles::shading_buffer);
-
-                        DrawLineEx((Vector2){(x * size) - (modx * size), (y * size) - (mody * size)}, 
-                        (Vector2){(w.point.x * size) - (modx * size), (w.point.y * size) - (mody * size)},
-                        4, w.powered ? GREEN : RED);
-
-                        EndTextureMode();
-                    }
-                        
-                }
-
-                tiles::draw_tile( 
-                    tile,
-                    {(x * size) - (modx * size), (y * size) - (mody * size)},
-                    scale,
-                    (Color){brightness, brightness, brightness, 255},
-                    wall,
-                    i,
-                    GetMousePosition().x - GetRenderWidth()/2 > (x * size) - (modx * size) && GetMousePosition().x - GetRenderWidth()/2 < ((x+1) * size) - (modx * size) &&
-                    GetRenderHeight()/2 - GetMousePosition().y > ((y-1) * size) - (mody * size) && GetRenderHeight()/2 - GetMousePosition().y < (y * size) - (mody * size)
-                );
             }
         }
 
-        DrawText(("Mass: " + to_string((int)round(get_tile(player->select).mass))).c_str(), GetMouseX(), GetMouseY(), 10, WHITE);
+        DrawText(("Tile: " + tiles::tile_prefabs[get_tile(player->select).id].name ).c_str(), GetMouseX() + 15, GetMouseY()-6, 10, WHITE);
+        DrawText(("Mass: " + to_string((int)round(get_tile(player->select).mass))).c_str(), GetMouseX() + 15, GetMouseY()+6, 10, WHITE);
     }
 };

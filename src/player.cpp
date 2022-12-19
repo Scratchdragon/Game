@@ -22,6 +22,7 @@ class _player {
 
     // Digging values
     bool digging = false;
+    bool interact = false;
     IntVec2 select = {0, 0};
     float dig_progress = 0; // Dig progress percentage
 
