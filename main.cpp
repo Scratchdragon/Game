@@ -158,7 +158,7 @@ int main() {
     tiles::load(&Player);
 
     // Rendering speed variables
-    SetTargetFPS(120);
+    SetTargetFPS(15);
     float fps = 30;
     float avg_wr_ms = 5;
     float avg_ms = 5;
@@ -208,8 +208,6 @@ int main() {
         fps = ((fps*30) + (1/GetFrameTime())) / 31;
         avg_wr_ms = ((avg_wr_ms*10) + (float(wr_end-wr_start) / float(CLOCKS_PER_SEC))) / 11;
         avg_ms = ((avg_ms*10) + (float(render_end-render_start) / float(CLOCKS_PER_SEC))) / 11;
-        //cout << "World render time = " << round(avg_wr_ms * 10000) / 10 << "ms : " << round(1/avg_wr_ms) << "\n";
-        //cout << "Total render time = " << round(avg_ms * 10000) / 10 << "ms : " << round(1/avg_ms) << "\n";
 
         // Update player
         Player.size = {16 * tile_scale, 16 * tile_scale};
@@ -227,20 +225,25 @@ int main() {
             if(t.mass < 0)
                 World.set_mass(player_pos, 0);
             World.tick_update(&Player);
-        }
+            
+            // Update player digging status
+            if(Player.dig_progress>=1) {
+                World.set_tile({ 
+                    (unsigned short)(Player.select.x%16), 
+                    (unsigned short)(Player.select.y%16) 
+                }, { 
+                    (unsigned short)(Player.select.x/16), 
+                    (unsigned short)(Player.select.y/16) 
+                },
+                {tiles::ID::VACUMN, 0});
+                Player.dig_progress = 0;
+                Player.digging = false;
+            }
 
-        // Update player digging status
-        if(Player.dig_progress>=1) {
-            World.set_tile({ 
-                (unsigned short)(Player.select.x%16), 
-                (unsigned short)(Player.select.y%16) 
-            }, { 
-                (unsigned short)(Player.select.x/16), 
-                (unsigned short)(Player.select.y/16) 
-            },
-            {tiles::ID::VACUMN, 0});
-            Player.dig_progress = 0;
-            Player.digging = false;
+            // Decrease load if framerate is struggling
+            if(fps <= 30) max_light_dist = fps/2;
+            else max_light_dist = 15;
+            std::cout << max_light_dist << endl;
         }
     }
 

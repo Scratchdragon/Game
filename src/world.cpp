@@ -33,6 +33,8 @@
 
 #define WORLD_SIZE 500 // Max of 4000
 
+unsigned short max_light_dist = 15;
+
 using namespace std;
 
 
@@ -487,9 +489,9 @@ class world_map {
         float r = PI - atan2(x, y);
         float distance = dist((Vector2){0, 0.75}, (Vector2){float(x), float(y)});
 
-        if (LIMIT_LIGHTING && distance > 15) {
+        if (LIMIT_LIGHTING && distance > max_light_dist) {
             brightness = 255 - (DARKNESS*2);
-            if(tiles::is_transparent(tile.id) && brightness > 255 - (DARKNESS*2) && round(distance) == 15) 
+            if(tiles::is_transparent(tile.id) && brightness > 255 - (DARKNESS*2) && round(distance) == max_light_dist-1) 
                 brightness = 255 - DARKNESS;
         }
         else {
@@ -593,14 +595,17 @@ class world_map {
         int tilew = ceil(GetRenderWidth()/size);
         int tileh = ceil(GetRenderHeight()/size);
 
+        // Pre-define rendering vars
+        int x;
+        int y;
+        chunk * c;
+
         // Get the chunks in view 
         for(unsigned short chunk_y = ((-tileh/2) - r_padding.z + tiley) / 16; chunk_y < ((tileh/2) + r_padding.w + tiley) / 16; ++chunk_y) {
             for(unsigned short chunk_x = ((-tilew/2) - r_padding.x + tilex) / 16; chunk_x < ((tilew/2) + r_padding.y + tilex) / 16; ++chunk_x) {
                 // Rendering chunk by chunk is faster than rendering tile by tile since it means we only have the get the chunk once per chunk instead of once per tile
-                chunk * c = get_chunk((UShortVec2){chunk_x, chunk_y});
-                int x;
-                int y;
-
+                c = get_chunk((UShortVec2){chunk_x, chunk_y});
+                
                 // Loop over each tile in the chunk
                 for(unsigned short rel_y = 0; rel_y < 16; ++rel_y) {
                     for(unsigned short rel_x = 0; rel_x < 16; ++rel_x) {
