@@ -113,6 +113,8 @@ class world_map {
 
     bool show_wires = false;
 
+    Vector2 *mouse;
+
     map<UShortVec2, chunk> chunkmap;
 
     void place_structure(Structure s, IntVec2 pos) {
@@ -530,8 +532,8 @@ class world_map {
                 (Color){brightness, brightness, brightness, 255},
                 wall,
                 i,
-                GetMousePosition().x - GetRenderWidth()/2 > (x * size) - (modx * size) && GetMousePosition().x - GetRenderWidth()/2 < ((x+1) * size) - (modx * size) &&
-                GetRenderHeight()/2 - GetMousePosition().y > ((y-1) * size) - (mody * size) && GetRenderHeight()/2 - GetMousePosition().y < (y * size) - (mody * size)
+                mouse->x - GetRenderWidth()/2 > (x * size) - (modx * size) && mouse->x - GetRenderWidth()/2 < ((x+1) * size) - (modx * size) &&
+                GetRenderHeight()/2 - mouse->y > ((y-1) * size) - (mody * size) && GetRenderHeight()/2 - mouse->y < (y * size) - (mody * size)
             );
         }
         else if(tiles::is_not_airtight(tile.id)) {
@@ -553,8 +555,8 @@ class world_map {
                 (Color){brightness, brightness, brightness, 255},
                 {},
                 0,
-                GetMousePosition().x - GetRenderWidth()/2 > (x * size) - (modx * size) && GetMousePosition().x - GetRenderWidth()/2 < ((x+1) * size) - (modx * size) &&
-                GetRenderHeight()/2 - GetMousePosition().y > ((y-1) * size) - (mody * size) && GetRenderHeight()/2 - GetMousePosition().y < (y * size) - (mody * size),
+                mouse->x - GetRenderWidth()/2 > (x * size) - (modx * size) && mouse->x - GetRenderWidth()/2 < ((x+1) * size) - (modx * size) &&
+                GetRenderHeight()/2 - mouse->y > ((y-1) * size) - (mody * size) && GetRenderHeight()/2 - mouse->y < (y * size) - (mody * size),
                 gas
             );
         }
@@ -568,8 +570,8 @@ class world_map {
                 (Color){brightness, brightness, brightness, 255},
                 {},
                 0,
-                GetMousePosition().x - GetRenderWidth()/2 > (x * size) - (modx * size) && GetMousePosition().x - GetRenderWidth()/2 < ((x+1) * size) - (modx * size) &&
-                GetRenderHeight()/2 - GetMousePosition().y > ((y-1) * size) - (mody * size) && GetRenderHeight()/2 - GetMousePosition().y < (y * size) - (mody * size)
+                mouse->x - GetRenderWidth()/2 > (x * size) - (modx * size) && mouse->x - GetRenderWidth()/2 < ((x+1) * size) - (modx * size) &&
+                GetRenderHeight()/2 - mouse->y > ((y-1) * size) - (mody * size) && GetRenderHeight()/2 - mouse->y < (y * size) - (mody * size)
             );
         }
     }
@@ -630,7 +632,7 @@ class world_map {
             }
         }
 
-        DrawText(("Tile: " + tiles::tile_prefabs[get_tile(player->select).id].name ).c_str(), GetMouseX() + 15, GetMouseY()-6, 10, WHITE);
-        DrawText(("Mass: " + to_string((int)round(get_tile(player->select).mass))).c_str(), GetMouseX() + 15, GetMouseY()+6, 10, WHITE);
+        DrawText(("Tile: " + tiles::tile_prefabs[get_tile(player->select).id].name ).c_str(), mouse->x + 15, mouse->y-6, 10, WHITE);
+        DrawText(("Mass: " + to_string((int)round(get_tile(player->select).mass))).c_str(), mouse->x + 15, mouse->y+6, 10, WHITE);
     }
 };

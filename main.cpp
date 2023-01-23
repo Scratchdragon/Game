@@ -19,6 +19,15 @@ using namespace std;
     #define GLSL_VERSION            100
 #endif
 
+#define XBOX360_LEGACY_NAME_ID  "Xbox Controller"
+#if defined(PLATFORM_RPI)
+    #define XBOX360_NAME_ID     "Microsoft X-Box 360 pad"
+    #define PS3_NAME_ID         "PLAYSTATION(R)3 Controller"
+#else
+    #define XBOX360_NAME_ID     "Xbox 360 Controller"
+    #define PS3_NAME_ID         "PLAYSTATION(R)3 Controller"
+#endif
+
 #define DEBUG false
 #define TPS 10
 
@@ -27,6 +36,15 @@ float tile_scale = 2.0f;
 // Global variables for input
 Vector2 movement_v = {0, 0};
 float mouse_wheel_v = 0;
+bool gamepad_available = false;
+Vector2 last_mouse;
+bool using_gamepad = false;
+int gamepad_released = 0;
+int gamepad_pressed = 0;
+bool rtrigger;
+bool ltrigger;
+float last_axis;
+Vector2 mouse;
 
 // Global world variables
 world_map World;
@@ -42,12 +60,42 @@ bool check_collision(_player * Player) {
 }
 
 void handle_input(_player * Player, float tile_w, Vector2 center) {
+    // Check controller or keyboard
+    if (using_gamepad && (last_mouse.x != GetMousePosition().x || last_mouse.y != GetMousePosition().y || GetKeyPressed())) {
+        using_gamepad = false;
+        cout << "GAME: Input set keyboard" << endl;
+        EnableCursor();
+    }
+    else if(!using_gamepad && gamepad_available) {
+        float axis_total = 0;
+        for (int i = 0; i < GetGamepadAxisCount(0); i++) {
+            axis_total += GetGamepadAxisMovement(0, i);
+        }
+        if(axis_total != last_axis || GetGamepadButtonPressed() != -1) {
+            using_gamepad = true;
+            cout << "GAME: Input set to gamepad 0" << endl;
+            DisableCursor();
+        }
+    }
+    last_mouse = GetMousePosition();
+    if(gamepad_available) {
+        last_axis = 0;
+        for (int i = 0; i < GetGamepadAxisCount(0); i++) {
+            last_axis += GetGamepadAxisMovement(0, i);
+        }
+        gamepad_released = 0;
+        if(gamepad_pressed != GetGamepadButtonPressed()) {
+            gamepad_released = gamepad_pressed;
+            gamepad_pressed = GetGamepadButtonPressed();
+        }
+    }
+
     // Slow down
     movement_v.x /= 1.15;
     movement_v.y /= 1.15;
 
     // Basic movement keys
-    if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP) || IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) {
+    if ((IsKeyDown(KEY_W) || IsKeyDown(KEY_UP) || IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) && !using_gamepad) {
         movement_v.x = sin(Player->rotation/(180/PI)) * PLAYER_SPEED;
         movement_v.y = cos(Player->rotation/(180/PI)) * PLAYER_SPEED;
         if(IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) {
@@ -56,7 +104,13 @@ void handle_input(_player * Player, float tile_w, Vector2 center) {
         }
     }
 
-    Player->rotation = 180 - round((atan2(GetMousePosition().x - center.x, GetMousePosition().y - center.y) / 3.1415)*180);
+    if(!using_gamepad)
+        Player->rotation = 180 - round((atan2(GetMousePosition().x - center.x, GetMousePosition().y - center.y) / 3.1415)*180);
+    else if(GetGamepadAxisMovement(0, 0) + GetGamepadAxisMovement(0, 1)) {
+        Player->rotation = 180 - round((atan2(GetGamepadAxisMovement(0, 0), GetGamepadAxisMovement(0, 1)) / 3.1415)*180);
+        movement_v.x = sin(Player->rotation/(180/PI)) * PLAYER_SPEED;
+        movement_v.y = cos(Player->rotation/(180/PI)) * PLAYER_SPEED;
+    }
         
     // Update the positions
     Player->position.x += movement_v.x * (60 / (1/GetFrameTime()));
@@ -66,21 +120,13 @@ void handle_input(_player * Player, float tile_w, Vector2 center) {
     Player->position.y += movement_v.y * (60 / (1/GetFrameTime()));
     if(check_collision(Player))
         Player->position.y -= movement_v.y * (60 / (1/GetFrameTime()));
-    
-    // Mouse wheel
-    mouse_wheel_v += GetMouseWheelMove()*tile_scale*4;
-    if(mouse_wheel_v > 0 && tile_scale > 5 && !DEBUG)
-        mouse_wheel_v = 0; 
-    if(mouse_wheel_v < 0 && tile_scale < 1 && !DEBUG)
-        mouse_wheel_v = 0;
 
-    if(abs(mouse_wheel_v) <= 0.04) {
-        if(mouse_wheel_v != 0)
-            mouse_wheel_v = 0;
-    }
+    // Update mouse location
+    if(!using_gamepad)
+        mouse = (Vector2){GetMouseX(), GetMouseY()};
     else {
-        mouse_wheel_v = round(mouse_wheel_v * 8500)/10000;
-        tile_scale += mouse_wheel_v/100;
+        mouse.x += GetGamepadAxisMovement(0, 2)*2.5*tile_scale;
+        mouse.y += GetGamepadAxisMovement(0, 3)*2.5*tile_scale;
     }
     
     // Update player selected tile
@@ -100,35 +146,86 @@ void handle_input(_player * Player, float tile_w, Vector2 center) {
     int tilex = floor(round(Player->position.x) / 50);
     int tiley = floor(round(Player->position.y) / 50);
 
-    int x = floor((GetMouseX() + modx*tile_w - center.x) / tile_w) + tilex;
-    int y = floor((center.y - GetMouseY() + mody*tile_w) / tile_w + 1) + tiley;
+    int x = floor((mouse.x + modx*tile_w - center.x) / tile_w) + tilex;
+    int y = floor((center.y - mouse.y + mody*tile_w) / tile_w + 1) + tiley;
     if(x != Player->select.x || y != Player->select.y) {
         Player->select = {x, y};
         Player->digging = false;
         Player->interact = false;
+        Player->dig_progress = 0;
     }
+
+    // Mouse wheel
+    mouse_wheel_v += GetMouseWheelMove()*tile_scale*4;
 
     // Mouse buttons
-    if(IsMouseButtonDown(MOUSE_LEFT_BUTTON) || IsMouseButtonDown(MOUSE_RIGHT_BUTTON)) {
-        if(!Player->digging && IsMouseButtonDown(MOUSE_LEFT_BUTTON) && !tiles::is_air(World.get_tile((IntVec2){x, y}).id)) {
-            Player->digging = true;
-            Player->dig_progress = 0;
+    if(!using_gamepad) {
+        if(IsMouseButtonDown(MOUSE_LEFT_BUTTON) || IsMouseButtonDown(MOUSE_RIGHT_BUTTON)) {
+            if(!Player->digging && IsMouseButtonDown(MOUSE_LEFT_BUTTON) && !tiles::is_air(World.get_tile((IntVec2){x, y}).id)) {
+                Player->digging = true;
+                Player->dig_progress = 0;
+            }
+            if(IsMouseButtonDown(MOUSE_RIGHT_BUTTON) && tiles::is_air(World.get_tile((IntVec2){x, y}).id))
+                World.set_tile({ 
+                    (unsigned short)(Player->select.x%16), 
+                    (unsigned short)(Player->select.y%16) 
+                }, { 
+                    (unsigned short)(Player->select.x/16), 
+                    (unsigned short)(Player->select.y/16) 
+                },
+                {tiles::ID::INSULATION, 1500});
         }
-        if(IsMouseButtonDown(MOUSE_RIGHT_BUTTON) && tiles::is_air(World.get_tile((IntVec2){x, y}).id))
-            World.set_tile({ 
-                (unsigned short)(Player->select.x%16), 
-                (unsigned short)(Player->select.y%16) 
-            }, { 
-                (unsigned short)(Player->select.x/16), 
-                (unsigned short)(Player->select.y/16) 
-            },
-            {tiles::ID::INSULATION, 1500});
-    }
-    if(IsMouseButtonReleased(MOUSE_RIGHT_BUTTON) && !Player->interact)
-        Player->interact = true;
+        if(IsMouseButtonReleased(MOUSE_RIGHT_BUTTON) && !Player->interact)
+            Player->interact = true;
 
-    if(Player->digging && IsMouseButtonReleased(MOUSE_LEFT_BUTTON))
-        Player->digging = false;
+        if(Player->digging && IsMouseButtonReleased(MOUSE_LEFT_BUTTON))
+            Player->digging = false;
+    }
+    else {
+        if(GetGamepadAxisCount(0) > 4) {
+            if(!ltrigger && GetGamepadAxisMovement(0, 4) > 0)
+                Player->interact = true;
+            Player->digging = rtrigger;
+            rtrigger = GetGamepadAxisMovement(0, 5) > 0;
+            ltrigger = GetGamepadAxisMovement(0, 4) > 0;
+        }
+        switch(GetGamepadButtonPressed()) {
+            case 9:
+                mouse_wheel_v = 3;
+                break;
+            case 11:
+            mouse_wheel_v = -3;
+                break;
+        }
+    }
+
+    if(mouse_wheel_v > 0 && tile_scale > 5 && !DEBUG)
+        mouse_wheel_v = 0; 
+    if(mouse_wheel_v < 0 && tile_scale < 1 && !DEBUG)
+        mouse_wheel_v = 0;
+
+    if(abs(mouse_wheel_v) <= 0.04) {
+        if(mouse_wheel_v != 0)
+            mouse_wheel_v = 0;
+    }
+    else {
+        mouse_wheel_v = round(mouse_wheel_v * 8500)/10000;
+        tile_scale += mouse_wheel_v/100;
+    }
+
+    // Controller input
+    if(IsGamepadAvailable(0)) {
+        if (!gamepad_available) {
+            gamepad_available = true;
+            cout << "GAME: Detected controller " << GetGamepadName(0) << endl;
+
+        }
+    }
+    else if(gamepad_available) {
+        gamepad_available = false;
+        cout << "GAME: Lost connection to controller" << endl;
+        using_gamepad = false;
+    }
 }
 
 int main() {
@@ -147,6 +244,7 @@ int main() {
 
     // Init map
     World = world_map();
+    World.mouse = &mouse;
     World.generate();
     World.generate_cave({(WORLD_SIZE/2), (WORLD_SIZE/2) - 3}, 10, 9, {tiles::ID::OXYGEN, 1400});
     World.generate_cave((IntVec2){(WORLD_SIZE/2), (WORLD_SIZE/2) - 6}, 3, 3, {tiles::ID::SILT, 1200});
@@ -154,11 +252,12 @@ int main() {
     World.place_structure(start_zone, {(WORLD_SIZE/2)-(start_zone.width/2), WORLD_SIZE/2-(start_zone.height/2)});
     
 
-    // Load tile textures
+    // Load textures
     tiles::load(&Player);
+    Texture2D cursor = LoadTexture("resources/images/ui/cursor.png");
 
     // Rendering speed variables
-    SetTargetFPS(15);
+    SetTargetFPS(120);
     float fps = 30;
     float avg_wr_ms = 5;
     float avg_ms = 5;
@@ -198,6 +297,7 @@ int main() {
 
             // Draw the wall shadows over the player to keep depth
             DrawTexture(tiles::shading_buffer.texture, 0, 0, WHITE);
+            DrawTexture(cursor, mouse.x, mouse.y, WHITE);
 
             DrawText( to_string((int)fps).c_str(), 4, 4, 20, RAYWHITE);
 
@@ -243,7 +343,6 @@ int main() {
             // Decrease load if framerate is struggling
             if(fps <= 30) max_light_dist = fps/2;
             else max_light_dist = 15;
-            std::cout << max_light_dist << endl;
         }
     }
 
